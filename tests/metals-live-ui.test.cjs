@@ -13,12 +13,18 @@ test('real monthly metal UI: chart, compare, leading, settings, failure isolatio
   w.fetch=async(url,opts={})=>{const target=new URL(url,base);assert.equal(target.origin,new URL(base).origin);requests.push(target.pathname);if(failUpdate&&target.pathname==='/api/metals/sync')return new Response(JSON.stringify({ok:false,results:[{provider:'worldbank',ok:false,message:'TEST ONLY simulated offline'}]}),{headers:{'Content-Type':'application/json'}});return fetch(target,opts);};
   await w.eval(await(await fetch(new URL('/assets/market.js',base))).text());
   w.eval(await(await fetch(new URL('/assets/metals.js',base))).text());
+  w.eval(await(await fetch(new URL('/assets/decision.js',base))).text());
   await wait(()=>d.documentElement.dataset.metalsReady==='1'&&d.querySelectorAll('#metalCompareRows tr').length>=60,'actual monthly comparison');
   return {w,d,segments:()=>segments};
  }
  try{
   const first=await load(),d=first.d;
-  assert.equal(d.getElementById('metals').hidden,false);
+  await wait(()=>d.querySelectorAll('#decisionSteel .card').length>=1,'real Taiwan rebar cards');
+  assert.ok(d.querySelectorAll('#decisionCopper .card').length>=1);
+  d.querySelector('[data-country=jp]').click();
+  await wait(()=>d.querySelector('#countryReference a')?.href.includes('meti.go.jp'),'Japan honest source state');
+  assert.equal(d.querySelectorAll('#countryRows tr').length,d.querySelectorAll('#decisionSteel .card').length);
+  assert.equal(d.getElementById('overview').hidden,false);
   assert.match(d.getElementById('metalMetrics').textContent,/World Bank 銅/);
   assert.match(d.getElementById('metalMetrics').textContent,/3個月趨勢/);
   assert.ok(first.segments()>100);

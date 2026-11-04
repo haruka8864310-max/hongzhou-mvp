@@ -341,6 +341,7 @@ def home():
     folder = Path(__file__).parent
     html=(folder / 'market.html').read_text(encoding='utf-8')
     html=html.replace('<!--settings-panel-->',(folder / 'templates' / 'settings.html').read_text(encoding='utf-8'))
+    html=html.replace('<!--decision-panel-->',(folder / 'templates' / 'decision.html').read_text(encoding='utf-8'))
     return html.replace('<!--metals-panels-->',(folder / 'templates' / 'metals.html').read_text(encoding='utf-8'))
 
 

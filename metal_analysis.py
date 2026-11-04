@@ -48,6 +48,29 @@ def changes(rows,n):
     return {'base_period':base['period'],'period':last['period'],'absolute':last['value']-base['value'],'percent':(last['value']/base['value']-1)*100}
 
 
+@router.get('/briefing')
+def briefing(country:str='us'):
+    if country not in ('us','jp','au'):raise HTTPException(400,'請選擇美國、日本或澳洲')
+    items=[]
+    for s in engine.all_series():
+        if s['provider']!='tw_rebar' and s['id'] not in ('wb_copper','bls_copper_scrap'):continue
+        rows=engine.observations(s['id'])
+        if not rows:continue
+        latest=rows[-1];change=changes(rows,1)
+        items.append({**s,'latest':latest,'change':change,'stale':latest['period']<shift(datetime.now(engine.TAIPEI).strftime('%Y-%m'),-2)})
+    # Match by provider, not a guessed series id, so renamed BLS series stay visible.
+    if not any(x['provider']=='bls' for x in items):
+        for s in engine.all_series():
+            if s['provider']=='bls':
+                rows=engine.observations(s['id'])
+                if rows:items.append({**s,'latest':rows[-1],'change':changes(rows,1),'stale':rows[-1]['period']<shift(datetime.now(engine.TAIPEI).strftime('%Y-%m'),-2)})
+    links={'jp':('日本官方金屬生產與供需統計','https://www.meti.go.jp/english/statistics/tyo/seidou/'),
+           'au':('澳洲官方生產者價格指數','https://www.abs.gov.au/statistics/economy/price-indexes-and-inflation/producer-price-indexes-australia')}
+    return {'items':items,'country':country,'reference':links.get(country),
+            'message':'美國使用 BLS 廢銅價格指數；與台灣鋼筋是不同商品，只比較各自走勢，不計算價差。' if country=='us' else '尚未接入可核對規格的此國金屬價格。官方統計入口可查閱，但不是已完成的價格比較。',
+            'radar':radar()}
+
+
 @router.get('/trend')
 def trend(series:str,months:int=120):
     if not 12<=months<=1000:raise HTTPException(400,'圖表期間須為12至1000個月')
