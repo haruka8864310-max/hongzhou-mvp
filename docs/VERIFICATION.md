@@ -1,5 +1,15 @@
 # 驗證與驗收紀錄
 
+## 2026-11-04：月度金屬分析
+
+- 獨立目錄 `.test-runs/live-metals-3a7j3842` 實際下載五個來源成功，正式資料庫未修改。World Bank 四種金屬 2,620 筆、BLS 廢銅指數 117 筆、台灣鋼材各規格及地區 31 筆，共 36 個序列。來源與限制見 [月度資料說明](MONTHLY_MARKETS.md)。最新月份分別為 2026-10、2026-09、2026-04；舊資料不標示為即時。
+- 真實歷史比較 120 個月；領先 0–3 期樣本數為 119、118、117、116；有匯率的台幣比較 61 個月；實際雷達 5 項訊號，未宣稱具有預測能力。
+- Python：`pytest -q --basetemp=.test-runs/final-metals`，61 passed，1 項既有 Starlette/httpx 棄用警告；`pip check` 通過。
+- 前端：`node --test tests/market-ui.test.cjs tests/metals-live-ui.test.cjs`，12 passed。真實 HTTP/jsdom 驗證更新按鈕、60 個月比較、4 列領先結果、設定儲存、更新失敗保留圖表與重新載入，Console 無錯誤。
+- 停止服務並以同一獨立資料目錄重新啟動後，API 保留 60 個月及美元／台幣標準化設定，再次通過前端驗證，確認資料與設定持久化。
+- 原生瀏覽器控制工具回報 `The browser access host is unavailable`。上述為 HTTP 與 DOM 整合測試，Canvas 記錄繪圖呼叫；未完成 Edge／Chrome 實際畫面目視驗收。
+- 豐興真實歷史仍需輸入或匯入；資料不足時不產生虛構機率。台灣來源只有單月快照，尚無長期走勢。大型預測套件尚未整合。
+
 日期：2026-11-04。所有測試使用獨立資料庫與明確標示的合成測試資料，不將測試報價寫入正式資料，不把測試數字展示為真實行情。
 
 ## 最新：空白卡片、空選單及 Failed to fetch 修復

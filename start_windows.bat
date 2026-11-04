@@ -8,7 +8,7 @@ goto check_dependencies
 py -3 -m venv .venv
 if errorlevel 1 goto failed
 :check_dependencies
-".venv\Scripts\python.exe" -c "import fastapi,uvicorn,multipart,pydantic_core"
+".venv\Scripts\python.exe" -c "import fastapi,uvicorn,multipart,pydantic_core,openpyxl,certifi"
 if not errorlevel 1 goto launch
 ".venv\Scripts\python.exe" -m pip install -r requirements.txt
 if errorlevel 1 goto failed

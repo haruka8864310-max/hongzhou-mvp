@@ -1,5 +1,13 @@
 # 指定工具評估
 
+## 本次月度分析補充
+
+查核 [statsmodels 的 pyproject](https://github.com/statsmodels/statsmodels/blob/main/pyproject.toml)：BSD-3-Clause、Python>=3.10，支援本專案3.11，依賴 NumPy／SciPy／pandas／patsy 等。[Darts目前定義](https://github.com/unit8co/darts/blob/master/pyproject.toml)為Apache-2.0、Python>=3.11，另有多項統計依賴，深度模型需要torch。Lightweight Charts為Apache-2.0並有署名／NOTICE要求，與FastAPI JSON相容，不提供報價本身。
+
+本次用簡單月報酬、Pearson相關、前後半段穩定度及頻率基準，未安裝 statsmodels／Darts；沒有在缺歷史可得版本時增加模型複雜度。原生Canvas已接通真實資料，不宣稱具備Lightweight Charts專業互動能力。這三者仍是後續工具，不是已交付依賴。
+
+實際新增 **openpyxl 3.1.5（MIT，Python>=3.8）** 讀取官方XLSX及 **certifi（MPL-2.0，Python>=3.7）** CA包，均在Python3.11測試。只讀原工作簿、正常檢驗TLS，未跳過驗證；啟動檔會在缺依賴時安裝 requirements.txt。
+
 查核日期：2026-11-04。程式授權不等於市場資料授權。以下四個工具本版均未加入執行依賴、未複製程式。
 
 | 工具 | 授權／成熟度查核 | 相依與相容性 | 決策 |

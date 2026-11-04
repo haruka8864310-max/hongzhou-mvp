@@ -14,6 +14,8 @@ import tempfile
 import zipfile
 import market
 import market_sources
+import metal_engine
+import metal_analysis
 from fastapi.staticfiles import StaticFiles
 
 
@@ -46,6 +48,8 @@ async def lifespan(application):
 
 app = FastAPI(title='弘洲營運助手', lifespan=lifespan)
 app.include_router(market.router)
+app.include_router(metal_engine.router)
+app.include_router(metal_analysis.router)
 app.mount('/assets', StaticFiles(directory=Path(__file__).parent / 'assets'), name='assets')
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=['localhost', '127.0.0.1', '[::1]', 'testserver'])
 
@@ -55,7 +59,7 @@ def health():
     with connect() as c:
         c.execute('SELECT id FROM market_quotes LIMIT 1').fetchone()
         version = c.execute('SELECT MAX(version) FROM schema_migrations').fetchone()[0]
-    return {'app':'hongzhou-metal-market','ui_contract':'market-repair-1','database':'ok','schema_version':version,'data_directory':str(ROOT.resolve())}
+    return {'app':'hongzhou-metal-market','ui_contract':'market-metals-2','database':'ok','schema_version':version,'data_directory':str(ROOT.resolve())}
 
 
 @app.get('/market.html', include_in_schema=False)
@@ -99,7 +103,7 @@ def setup_database():
             has_market = c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='market_quotes'").fetchone()
             has_versions = c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'").fetchone()
             version = c.execute('SELECT COALESCE(MAX(version),0) FROM schema_migrations').fetchone()[0] if has_versions else 0
-        if not has_market or version < 3:
+        if not has_market or version < 4:
             backup_database(as_zip=False)
     with connect() as c:
         c.execute(
@@ -146,6 +150,7 @@ def setup_database():
         )
         market.migrate(c)
         market_sources.migrate(c)
+        metal_engine.migrate(c)
     return DB
 
 
@@ -237,7 +242,7 @@ def validate_database(path: Path):
             raise ValueError('備份客戶關聯無效')
         if c.execute("SELECT 1 FROM sqlite_master WHERE name='schema_migrations'").fetchone():
             version = c.execute('SELECT COALESCE(MAX(version),0) FROM schema_migrations').fetchone()[0]
-            if version > 3:
+            if version > 4:
                 raise ValueError('備份版本較新，請先升級程式')
             if version >= 2:
                 columns = {r['name'] for r in c.execute('PRAGMA table_info(market_quotes)')}
@@ -255,6 +260,15 @@ def validate_database(path: Path):
                     values = market_sources.Settings.model_validate_json(row[0])
                     if not set(values.compare_markets).issubset(values.tracked_markets):
                         raise ValueError('比較設定與追蹤市場不符')
+            if version >= 4:
+                c.execute('SELECT id,name,provider,currency,unit,frequency,specification,source_url,license,notes FROM metal_series LIMIT 0')
+                c.execute('SELECT provider,checked_at,success_at,latest_period,error,imported,source_url,source_updated FROM metal_updates LIMIT 0')
+                for row in c.execute('SELECT series_id,period,value,retrieved_at,source_updated,notes FROM metal_observations'):
+                    metal_engine.numeric(row['value'])
+                    datetime.strptime(row['period'],'%Y-%m')
+                metal_engine.validate(c)
+                row=c.execute("SELECT value FROM market_settings WHERE name='metals'").fetchone()
+                if row:metal_engine.MetalSettings.model_validate_json(row[0])
         for table, model in [('prices', Price), ('customers', Customer), ('trades', Trade)]:
             for row in c.execute(f'SELECT * FROM {table}'):
                 model(**dict(row))
@@ -266,7 +280,7 @@ def validate_database(path: Path):
 
 def restore_database(backup_file: str | Path, target_root: Path | None = None) -> Path:
     # Same lock order as source updates: finish any in-flight download before restore.
-    with market_sources.UPDATE_LOCK:
+    with market_sources.UPDATE_LOCK, metal_engine.LOCK:
         with DB_LOCK:
             return _restore_database(backup_file, target_root)
 
@@ -325,7 +339,9 @@ def _restore_database(backup_file: str | Path, target_root: Path | None = None) 
 @app.get('/', response_class=HTMLResponse)
 def home():
     folder = Path(__file__).parent
-    return (folder / 'market.html').read_text(encoding='utf-8').replace('<!--settings-panel-->', (folder / 'templates' / 'settings.html').read_text(encoding='utf-8'))
+    html=(folder / 'market.html').read_text(encoding='utf-8')
+    html=html.replace('<!--settings-panel-->',(folder / 'templates' / 'settings.html').read_text(encoding='utf-8'))
+    return html.replace('<!--metals-panels-->',(folder / 'templates' / 'metals.html').read_text(encoding='utf-8'))
 
 
 @app.get('/legacy', response_class=HTMLResponse)

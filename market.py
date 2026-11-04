@@ -347,10 +347,12 @@ def research(query: ResearchQuery):
     margin=z*math.sqrt(accuracy*(1-accuracy)/n+z*z/(4*n*n))/(1+z*z/n)
     today=datetime.now(timezone(timedelta(hours=8))).date()
     stale=(today-date.fromisoformat(rows[-1]['date'])).days>10
+    from metal_analysis import confusion, weekly_factor_research
     return {**result, 'message':('無法可靠預測：最新資料已過期。以下僅為歷史基準研究。' if stale else '無法可靠預測：僅完成基準研究。歷史頻率未經校準，尚無獨立證據證明優於簡單基準。'),
             'probabilities':probabilities(labels), 'accuracy':accuracy,
             'flat_accuracy':sum(t['actual']=='flat' for t in tests)/n, 'backtest_samples':n,
             'interval':[max(0,center-margin),min(1,center+margin)], 'backtest':tests,
+            'confusion_matrix':confusion(tests),'factor_studies':weekly_factor_research(rows,tests),
             'latest_date':rows[-1]['date'], 'source':rows[-1]['source'],
             'published_at':rows[-1]['published_at'], 'target_date':(date.fromisoformat(rows[-1]['date'])+timedelta(days=7)).isoformat(),
             'method':'擴展視窗、前 26 次週變化起訓；每期只使用已發生的方向。加一平滑頻率；比較永遠猜持平基準。95% Wilson 區間僅為歷史命中率區間，非價格預測區間；週資料可能自相關。',

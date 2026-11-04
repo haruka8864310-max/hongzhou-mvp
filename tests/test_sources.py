@@ -133,9 +133,11 @@ def test_update_lock_and_backup_settings(client):
 
 def test_background_worker_starts_and_stops(client,monkeypatch):
     import threading
+    import metal_engine
     called=threading.Event()
     monkeypatch.setenv('HONGZHOU_DISABLE_SCHEDULER','0')
     monkeypatch.setattr(sources,'synchronize',lambda force:called.set())
+    monkeypatch.setattr(metal_engine,'sync',lambda force:None)
     stop,thread=sources.start_scheduler()
     try:assert called.wait(2)
     finally:stop.set();thread.join(2)

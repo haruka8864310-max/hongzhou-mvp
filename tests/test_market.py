@@ -152,6 +152,7 @@ def test_research_insufficient_and_future_leakage(client):
     assert client.post('/api/market/import',files={'file':('test.csv',csv_bytes(rows))}).status_code==200
     original=client.post('/api/market/research',json={'series':key}).json()
     assert original['backtest_samples']==26
+    assert sum(sum(row.values()) for row in original['confusion_matrix'].values())==26
     assert sum(original['probabilities'].values())==pytest.approx(1)
     assert original['backtest'][0]['training_transitions']==26
     assert all(r['origin']<r['target_date'] for r in original['backtest'])

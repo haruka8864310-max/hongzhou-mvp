@@ -284,6 +284,8 @@ def start_scheduler():
             try:
                 if get_settings().auto_update:
                     synchronize(force=False)
+                    import metal_engine
+                    metal_engine.sync(force=False)
             except Exception:
                 # A busy manual update or transient restore must not terminate the worker.
                 import logging

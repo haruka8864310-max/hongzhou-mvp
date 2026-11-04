@@ -83,4 +83,4 @@ def test_initialization_is_idempotent(client):
     app.setup_database()
     assert len(client.get('/api/customers').json()) == 1
     with app.connect() as c:
-        assert c.execute('SELECT COUNT(*) FROM schema_migrations').fetchone()[0] == 3
+        assert c.execute('SELECT COUNT(*) FROM schema_migrations').fetchone()[0] == 4
