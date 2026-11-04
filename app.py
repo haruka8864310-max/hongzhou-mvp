@@ -13,6 +13,7 @@ import sqlite3
 import tempfile
 import zipfile
 import market
+import market_sources
 from fastapi.staticfiles import StaticFiles
 
 
@@ -33,7 +34,14 @@ MAX_BACKUP_BYTES = 256 * 1024 * 1024
 @asynccontextmanager
 async def lifespan(application):
     setup_database()
-    yield
+    stop, worker = market_sources.start_scheduler()
+    try:
+        yield
+    finally:
+        stop.set()
+        if worker:
+            import asyncio
+            await asyncio.to_thread(worker.join, 25)
 
 
 app = FastAPI(title='弘洲營運助手', lifespan=lifespan)
@@ -75,7 +83,9 @@ def setup_database():
     if DB.exists():
         with connect() as c:
             has_market = c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='market_quotes'").fetchone()
-        if not has_market:
+            has_versions = c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'").fetchone()
+            version = c.execute('SELECT COALESCE(MAX(version),0) FROM schema_migrations').fetchone()[0] if has_versions else 0
+        if not has_market or version < 3:
             backup_database(as_zip=False)
     with connect() as c:
         c.execute(
@@ -121,6 +131,7 @@ def setup_database():
             "INSERT OR IGNORE INTO schema_migrations(version) VALUES (1)"
         )
         market.migrate(c)
+        market_sources.migrate(c)
     return DB
 
 
@@ -212,7 +223,7 @@ def validate_database(path: Path):
             raise ValueError('備份客戶關聯無效')
         if c.execute("SELECT 1 FROM sqlite_master WHERE name='schema_migrations'").fetchone():
             version = c.execute('SELECT COALESCE(MAX(version),0) FROM schema_migrations').fetchone()[0]
-            if version > 2:
+            if version > 3:
                 raise ValueError('備份版本較新，請先升級程式')
             if version >= 2:
                 columns = {r['name'] for r in c.execute('PRAGMA table_info(market_quotes)')}
@@ -220,6 +231,16 @@ def validate_database(path: Path):
                     raise ValueError('行情資料表欄位不完整')
                 for row in c.execute('SELECT * FROM market_quotes'):
                     market.Quote(**{name: row[name] for name in market.CSV_FIELDS})
+            if version >= 3:
+                columns = {r['name'] for r in c.execute('PRAGMA table_info(market_quotes)')}
+                if not {'publication_known','source_updated_at'}.issubset(columns):
+                    raise ValueError('自動來源欄位不完整')
+                c.execute('SELECT instrument,provider,checked_at,success_at,latest_date,source_updated_at,error,imported,conflicts FROM market_source_status LIMIT 0')
+                row = c.execute("SELECT value FROM market_settings WHERE name='application'").fetchone()
+                if row:
+                    values = market_sources.Settings.model_validate_json(row[0])
+                    if not set(values.compare_markets).issubset(values.tracked_markets):
+                        raise ValueError('比較設定與追蹤市場不符')
         for table, model in [('prices', Price), ('customers', Customer), ('trades', Trade)]:
             for row in c.execute(f'SELECT * FROM {table}'):
                 model(**dict(row))
@@ -230,8 +251,10 @@ def validate_database(path: Path):
 
 
 def restore_database(backup_file: str | Path, target_root: Path | None = None) -> Path:
-    with DB_LOCK:
-        return _restore_database(backup_file, target_root)
+    # Same lock order as source updates: finish any in-flight download before restore.
+    with market_sources.UPDATE_LOCK:
+        with DB_LOCK:
+            return _restore_database(backup_file, target_root)
 
 
 def _restore_database(backup_file: str | Path, target_root: Path | None = None) -> Path:
@@ -287,7 +310,8 @@ def _restore_database(backup_file: str | Path, target_root: Path | None = None) 
 
 @app.get('/', response_class=HTMLResponse)
 def home():
-    return (Path(__file__).parent / 'market.html').read_text(encoding='utf-8')
+    folder = Path(__file__).parent
+    return (folder / 'market.html').read_text(encoding='utf-8').replace('<!--settings-panel-->', (folder / 'templates' / 'settings.html').read_text(encoding='utf-8'))
 
 
 @app.get('/legacy', response_class=HTMLResponse)

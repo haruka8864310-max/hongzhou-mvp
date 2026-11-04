@@ -14,7 +14,7 @@ test('market frontend integrated with FastAPI',async t=>{
   const dataDir=fs.mkdtempSync(path.join(root,'.test-runs','dom-ui-'));
   const port=18879,base=`http://127.0.0.1:${port}`;
   const python=process.env.HONGZHOU_TEST_PYTHON||path.join(root,'.venv','Scripts','python.exe');
-  const server=spawn(python,['-m','uvicorn','app:app','--host','127.0.0.1','--port',String(port)],{cwd:root,env:{...process.env,HONGZHOU_DATA_DIR:dataDir},windowsHide:true,stdio:['ignore','pipe','pipe']});
+  const server=spawn(python,['-m','uvicorn','app:app','--host','127.0.0.1','--port',String(port)],{cwd:root,env:{...process.env,HONGZHOU_DATA_DIR:dataDir,HONGZHOU_DISABLE_SCHEDULER:'1'},windowsHide:true,stdio:['ignore','pipe','pipe']});
   let logs='';server.stderr.on('data',b=>logs+=b.toString());
   let dom;
   try{
@@ -79,6 +79,26 @@ test('market frontend integrated with FastAPI',async t=>{
       d.getElementById('radarform').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
       await waitFor(()=>d.getElementById('radarResult').textContent.includes('沒有符合'),'radar result');
       assert.match(d.getElementById('radarResult').textContent,/不代表沒有風險/);
+      assert.deepEqual(errors,[]);
+    });
+    await t.test('settings form persists selection, frequency, period and thresholds',async()=>{
+      d.querySelector('nav [data-page="data"]').click();
+      for(const input of d.querySelectorAll('#trackedMarkets input'))input.checked=['fx_usd','fx_jpy'].includes(input.value);
+      d.getElementById('defaultCompareA').value='fx_jpy';d.getElementById('defaultCompareB').value='fx_usd';
+      d.getElementById('analysisDays').value='90';d.getElementById('anomalyPercent').value='2.5';
+      d.getElementById('updateMinutes').value='60';d.getElementById('autoUpdate').checked=false;
+      const form=d.getElementById('settingsform');form.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
+      await waitFor(()=>!form.querySelector('button').disabled,'save settings');
+      assert.match(d.getElementById('settingsStatus').textContent,/設定已保存/);
+      const saved=await (await fetch(base+'/api/market/settings')).json();
+      assert.deepEqual(saved.tracked_markets,['fx_usd','fx_jpy']);
+      assert.deepEqual(saved.compare_markets,['fx_jpy','fx_usd']);
+      assert.equal(saved.update_minutes,60);assert.equal(saved.analysis_days,90);assert.equal(saved.anomaly_percent,2.5);
+      assert.equal(saved.auto_update,false);assert.equal(d.getElementById('overviewThreshold').value,'2.5');
+      assert.equal(d.querySelectorAll('#cards .card').length,2);
+      assert.match(d.getElementById('sourceSummaryNote').textContent,/背景更新已停用/);
+      assert.match(d.getElementById('sourceRows').textContent,/需要手動輸入/);
+      assert.match(d.getElementById('sourceRows').textContent,/等待首次自動更新/);
       assert.deepEqual(errors,[]);
     });
   }finally{

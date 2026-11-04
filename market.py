@@ -1,4 +1,4 @@
-"""Local market intelligence; no external quote requests or seeded market data."""
+"""Local market analytics. Reference-feed connectors live in market_sources."""
 import csv
 import io
 import json
@@ -126,7 +126,7 @@ def insert_quotes(quotes, method):
 
 @router.get('/catalog')
 def catalog():
-    return {'instruments': CATALOG, 'csv_fields': CSV_FIELDS, 'automatic_sources': False}
+    return {'instruments': CATALOG, 'csv_fields': CSV_FIELDS, 'automatic_sources': ['fx_usd','fx_jpy','fx_cny']}
 
 
 @router.post('/quotes')
@@ -181,15 +181,25 @@ def historical_change(rows, days):
 
 @router.get('/overview')
 def overview():
+    from market_sources import get_settings
+    settings = get_settings()
     today = datetime.now(timezone(timedelta(hours=8))).date()
     series = []
     for series_key, rows in grouped().items():
         latest = rows[-1]
         series.append(dict(key=series_key, name=INSTRUMENTS[latest['instrument']]['name'], latest=latest,
-            count=len(rows), previous=change(latest, rows[-2]) if len(rows)>1 else None,
+            count=len(rows), period_count=sum(r['date'] >= (today-timedelta(days=settings.analysis_days)).isoformat() for r in rows), previous=change(latest, rows[-2]) if len(rows)>1 else None,
             days7=historical_change(rows, 7), days30=historical_change(rows, 30),
             stale=(today-date.fromisoformat(latest['date'])).days > INSTRUMENTS[latest['instrument']]['cadence']))
     return {'series': series, 'tracked': CATALOG, 'generated_at': datetime.now(timezone.utc).isoformat()}
+
+
+@router.get('/history')
+def history(series: str):
+    from market_sources import get_settings
+    cutoff = (datetime.now(timezone(timedelta(hours=8))).date()-timedelta(days=get_settings().analysis_days)).isoformat()
+    rows = [r for r in grouped().get(series,[]) if r['date']>=cutoff]
+    return {'points':rows,'reason': '至少需要兩筆觀察才能顯示走勢' if len(rows)<2 else '', 'days':get_settings().analysis_days}
 
 
 class Comparison(BaseModel):
@@ -216,7 +226,13 @@ def convert(row, groups):
     rate = 1
     if row['currency'] != 'TWD':
         candidates = [values for values in groups.values() if values[0]['instrument'] == 'fx_' + row['currency'].lower()]
-        # Multiple FX specifications must not be silently mixed.
+        # Prefer the explicitly selected automatic feed, never blend specifications.
+        from market_sources import get_settings
+        preferred = [values for values in candidates if values[-1]['method'] == 'auto:'+get_settings().provider]
+        if len(preferred) == 1:
+            candidates = preferred
+        else:
+            candidates = [values for values in candidates if not values[-1]['method'].startswith('auto:')]
         if len(candidates) != 1:
             return None
         fx = at_or_before(candidates[0], row['date'], 7)
@@ -260,7 +276,7 @@ def compare(query: Comparison):
             converted = convert(row, groups) if query.mode=='twd' else {'value': row['price'], 'fx_date': None}
             if not converted:
                 break
-            entries.append(dict(**converted, quote_date=row['date'], source=row['source'], source_url=row['source_url'], delay=row['delay'], published_at=row['published_at']))
+            entries.append(dict(**converted, quote_date=row['date'], source=row['source'], source_url=row['source_url'], delay=row['delay'], published_at=row['published_at'],publication_known=row.get('publication_known',1)))
         if len(entries)==len(selected):
             points.append({'date': day, 'entries': entries})
         else:

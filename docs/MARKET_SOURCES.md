@@ -1,18 +1,40 @@
-# 行情來源與權利研究
+# 行情來源查核與實測
 
-查核日期：2026-11-04。本版沒有自動連接器，不將網頁可見、免費註冊或延遲報價解讀成允許抓取及公司使用。手動／CSV 也須具備適用許可。
+查核：2026-11-04。本版先接入真實日參考匯率；不使用付費 API、未授權爬蟲或替代商品冒充指定行情。來源在每張卡片及「資料與設定」狀態表中可查。
 
-| 追蹤項目 | 官方／候選來源與條件 | 本版處理 |
-|---|---|---|
-| 豐興廢鋼、鋼筋 | [豐興](https://www.fenghsin.com.tw/)；週公告、品級及含稅口徑需確認，未確認資料重用條款 | 僅匯入公司有權使用的紀錄，不抓取 |
-| 日本 H2／出口 | [日本鐵鋼連盟](https://www.jisf.or.jp/)及公司已授權報價；地區、FOB／CFR 與品質不可混用 | 無已確認的免費公司用資料流，手動／CSV |
-| 美國廢鋼 | [USGS](https://www.usgs.gov/centers/national-minerals-information-center/iron-and-steel-scrap-statistics-and-information)提供歷史統計、年報及資料表，非即時成交價；須核對個別資料集及第三方引用權利 | 免費官方候選，尚無欄位轉換器，不把年報當即時價格 |
-| COMEX HG | [CME 授權](https://www.cmegroup.com/market-data/license-data.html)與[政策](https://www.cmegroup.com/market-data/license-data/information-policies.html)包含員工內部顯示等用途，須區分顯示／非顯示、歷史與延遲權利 | 未有適用許可不串接，不使用網站內部報價端點 |
-| LME 銅 | [FAQ](https://www.lme.com/en/about/faqs/market-data-faqs)、[訂閱](https://www.lme.com/subscriptions)；可見價格及隔日 XML 等產品有不同條件 | 不因為延遲而視為免費商用；現貨、三個月期分開 |
-| SHFE 銅 | [版權聲明](https://www.shfe.com.cn/disclaimer/)、[交易規則](https://edu.shfe.com.cn/TradingAssistant/RulesIntroduction/518.html)載明資訊權利與商業使用限制 | 未取得適用許可不串接，記錄合約與含稅口徑 |
-| 鐵礦砂／鋼鐵背景指標 | [World Bank 商品市場](https://www.worldbank.org/en/research/commodity-markets)、[資料授權](https://datacatalog.worldbank.org/public-licenses)；預設開放資料 CC BY 4.0，部分資料集另有條款。Pink Sheet 有月／年資料 | 合法免費候選；確認實際資料集、品級、第三方欄位與頻率後才導入，不冒充每日現貨 |
-| USD／JPY／CNY 兌台幣 | [央行開放宣告](https://www.cbc.gov.tw/tw/cp-307-36676-DE020-1.html)採[政府資料開放第 1 版](https://data.gov.tw/license)，須註明出處及注意例外 | 優先候選，先提供 CSV；個別數列方向、頻率、發布時間與 API 穩定性尚待確認 |
+## 已實作的來源
 
-每筆記錄包含行情日、價格、幣別、單位、規格、合約／口徑、來源名稱、HTTP(S) 網址、內部使用授權依據、含時區發布時間、本機更新時間與延遲狀態。今天匯入的舊資料不會被標成今日行情。授權註記由使用者提供，不代表系統驗證其權利。
+### 中央銀行 BP01D01（預設）
 
-待確認：公司既有報價及數據商許可；豐興品級、含稅與持平週；H2 交貨條件；美國品級；銅合約月份／收盤結算口徑；至少一年可追溯發布時間的豐興週資料。法律及契約權利未確認前不自動抓取，本研究不代替法律審查。
+- [官方資料集 6563](https://data.gov.tw/dataset/6563)列為免費、政府資料開放授權第 1 版；註記僅供國內研究參考。用於本機公司內部研究，不用作進出口結算、銀行買賣價或對外再散布。
+- [官方 API 文件](https://cpx.cbc.gov.tw/Data/ExportToAPIInfo)指定新端點 `https://cpx.cbc.gov.tw/API/DataAPI/Get?FileName=BP01D01`，免金鑰，完整歷史從 1993 年開始。解析回應的欄位名稱，不依賴硬編碼欄位順序。
+- 日資料為台灣時間 16:00 參考值，整理／發布可能較晚；開放資料目錄的更新頻率標為每月，不保證當日更新。逐筆原始發布時間未提供。`meta.last_updated` 是整份資料集更新日，不拿來當每筆報價日或發布時間。
+- USD/TWD = NTD/USD；JPY/TWD = NTD/USD ÷ JPY/USD；CNY/TWD = NTD/USD ÷ CNY/USD。分母及台幣資料必須同日，缺值不插補。1 單位外幣兌多少台幣，非 100 日圓報價。
+- 實測 2026-11-04 成功取得，每幣 259 筆、共 777 筆；最新報價 2026-10-30、來源資料集更新 2026-11-02，因此狀態為「資料延遲」，另保留取得成功時間。實際資料與結果 JSON 僅在忽略的獨立測試目錄，不提交真實數值至 Git。
+- 舊端點 `/api/OpenData/BP01D01_GetData?period=Day` 實測只到 2019-05-31，已棄用，不作自動備援，以免把舊資料誤當近期資料。
+
+### Frankfurter 混合日參考（備選）
+
+- [官方說明](https://frankfurter.dev/)明確允許混合參考值商業使用與歷史快取、免金鑰；[授權及條件](https://frankfurter.dev/license/)說明程式 MIT，直接供應商資料仍受原條款約束。僅使用混合端點，不把程式 MIT 當作所有金融資料的授權。
+- `https://api.frankfurter.dev/v2/rates?base=USD&quotes=TWD,JPY,CNY&from=...&to=...`，同日交叉換算；日參考非成交價。歷史覆蓋依幣別與提供者，不保證三幣皆可追溯至宣稱的最早總範圍。
+- 本機實測回傳 HTTP 522；已提供解析、錯誤處理與設定選擇，但**不宣稱此來源目前可取得**。失敗不會自動偷偷切換來源，不刪既有資料。
+
+## 未接入的指定金屬／廢鋼行情
+
+| 行情 | 原始更新／歷史限制 | 金鑰、許可與公司使用權 | 本版狀態 |
+|---|---|---|---|
+| COMEX HG | 日內／日結算；合約、延遲及歷史產品條件各異 | [CME 授權](https://www.cmegroup.com/market-data/license-data.html)涵蓋內部顯示與分析等用途，需核對適用許可，不是有免費網頁就能自動公司使用 | 需要手動輸入；無已確認適用的免費 API |
+| LME 銅 | 即時、延遲、現貨、三個月期、隔日與歷史各異 | [LME FAQ](https://www.lme.com/en/about/faqs/market-data-faqs)及訂閱服務有不同許可；未取得適用憑證／公司用途授權 | 需要手動輸入，不用其他月均銅價冒充 LME 指定價 |
+| SHFE 銅 | 交易日與合約；結算／收盤不同 | [版權聲明](https://www.shfe.com.cn/disclaimer/)及交易規則限制資訊商業使用，需同意或適用許可；不抓延遲網頁 | 需要手動輸入 |
+| 豐興廢鋼、鋼筋 | 每週公告；品級、含稅與調整週需核對 | [豐興](https://www.fenghsin.com.tw/)尚未找到明確可自動保存、免費公司使用的 API；不從新聞轉載抓取 | 需要手動輸入或合法 CSV |
+| 日本 H2 | 地區／週期、出口 FOB／CFR 條件不一，歷史依供應商 | [日本鐵鋼連盟](https://www.jisf.or.jp/)及供應商需逐項查核，未確認免費自動公司使用方案 | 需要手動輸入 |
+| 美國廢鋼 | 商業報價與 USGS 月／年統計不是同一價格 | [USGS 自製資料權利](https://www.usgs.gov/faqs/are-usgs-reportspublications-copyrighted?qt-news_science_products=0)允許利用，第三方資料另查；年報不代表可成交行情 | 未導入不同口徑替代品；需要手動輸入 |
+| 鐵礦砂背景指標 | World Bank 月／年資料 | [World Bank 個別資料集](https://datacatalog.worldbank.org/public-licenses)及第三方欄位需核對；本次不擴充其他來源 | 需要手動輸入 |
+
+未確認不代表永遠沒有合法免費來源；本次未找到並實測到符合條件者，不能宣稱已接入。未要求使用者購買付費 API 或交付金鑰。
+
+## 更新與保存規則
+
+預設每 6 小時檢查，頁面可改每 1 小時／每日。單程序背景執行、失敗也保存最後嘗試，避免重啟造成請求風暴；手動更新至少間隔 60 秒。下載大小上限 16 MB、逾時 20 秒。只接受程式內白名單端點，使用者不能輸入任意 URL 作自動來源。標準測試不連網。
+
+保留報價日、來源、更新時間、幣別、單位與延遲狀態。來源發布時間不明時以旗標區別「首次取得」，不捏造歷史發布時間；舊值不覆寫，來源修訂以衝突數提醒。停止追蹤不刪資料，換來源不混合規格。公司自行匯入資料仍須具備適用權利。

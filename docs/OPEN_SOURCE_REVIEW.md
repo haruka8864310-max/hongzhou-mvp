@@ -13,4 +13,10 @@ Stars 是查核時頁面快照，不是穩定性保證；未做完整提交頻�
 
 本版市場邏輯使用 Python 標準函式庫與現有 FastAPI／Pydantic，前端用原生 DOM／Canvas。FastAPI、Pydantic、pytest 為 MIT；Uvicorn、HTTPX 為 BSD-3-Clause；python-multipart 為 Apache-2.0。HTTPX 僅放開發測試需求。實際安裝版本授權應保留套件 metadata／LICENSE，完整版本鎖定與相依供應鏈審查仍待後續。
 
+## 真實來源接入的選擇
+
+本次不增加執行依賴，以 Python 標準函式庫 urllib／JSON 接官方央行 API，保留既有架構。可選的 [Frankfurter](https://github.com/lineofflight/frankfurter)為 MIT，官方頁約 2k stars、提供歷史與快取說明；只消費公開 API，不安裝其不同技術堆疊。程式授權與資料條款分開查核，詳見 MARKET_SOURCES.md；本次實際網路遇 HTTP 522，因此預設採實測成功的央行。
+
+既有圖表繼續用本機 Canvas，改為亮色系並增加歷史序列，不為這次更新導入 Darts、vectorbt、整套 OpenTerminal 或不適用的金融資料套件。
+
 前端整合測試新增 **jsdom 26.1.0（MIT）**，只在 `devDependencies`，並提交 `pnpm-lock.yaml` 固定版本。它用於 DOM／表單事件與 API 測試，正式程式不載入。安裝時有一項傳遞依賴 `whatwg-encoding@3.1.1` 棄用提示；目前測試通過，未以更換整套套件來消除提示。測試套件完整依賴的安全稽核仍待後續。

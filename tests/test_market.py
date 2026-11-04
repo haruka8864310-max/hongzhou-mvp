@@ -133,7 +133,7 @@ def test_additive_upgrade_keeps_original_rows(client):
     client.post('/api/customers',json={'name':'TEST ONLY'})
     with app.connect() as c:
         c.execute('DROP TABLE market_quotes')
-        c.execute('DELETE FROM schema_migrations WHERE version=2')
+        c.execute('DELETE FROM schema_migrations WHERE version>1')
     app.setup_database()
     assert list(app.BACKUPS.glob('hongzhou-*.db'))
     assert client.get('/api/customers').json()[0]['name']=='TEST ONLY'
@@ -221,7 +221,7 @@ def test_restore_v1_adds_tables_without_losing_rows(client,tmp_path):
     with app.connect(old) as c:
         c.execute('DROP TABLE market_quotes')
         c.execute('DROP TABLE market_settings')
-        c.execute('DELETE FROM schema_migrations WHERE version=2')
+        c.execute('DELETE FROM schema_migrations WHERE version>1')
     assert client.post('/api/restore',files={'file':('old.db',old.read_bytes())}).status_code==200
     assert client.get('/api/market/overview').json()['series']==[]
     assert client.get('/api/customers').json()[0]['name']=='TEST LEGACY'
