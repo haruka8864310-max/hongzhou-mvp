@@ -51,24 +51,36 @@ def changes(rows,n):
 @router.get('/briefing')
 def briefing(country:str='us'):
     if country not in ('us','jp','au'):raise HTTPException(400,'請選擇美國、日本或澳洲')
-    items=[]
+    items=[];representatives=engine.representative_settings()
     for s in engine.all_series():
-        if s['provider']!='tw_rebar' and s['id'] not in ('wb_copper','bls_copper_scrap'):continue
+        if s['id'] not in set(representatives.values())|{'wb_copper','bls_steel_scrap'}:continue
         rows=engine.observations(s['id'])
         if not rows:continue
         latest=rows[-1];change=changes(rows,1)
-        items.append({**s,'latest':latest,'change':change,'stale':latest['period']<shift(datetime.now(engine.TAIPEI).strftime('%Y-%m'),-2)})
+        items.append({**s,'name':engine.display_name(s),'latest':latest,'change':change,'stale':latest['period']<shift(datetime.now(engine.TAIPEI).strftime('%Y-%m'),-2)})
     # Match by provider, not a guessed series id, so renamed BLS series stay visible.
-    if not any(x['provider']=='bls' for x in items):
-        for s in engine.all_series():
-            if s['provider']=='bls':
-                rows=engine.observations(s['id'])
-                if rows:items.append({**s,'latest':rows[-1],'change':changes(rows,1),'stale':rows[-1]['period']<shift(datetime.now(engine.TAIPEI).strftime('%Y-%m'),-2)})
     links={'jp':('日本官方金屬生產與供需統計','https://www.meti.go.jp/english/statistics/tyo/seidou/'),
            'au':('澳洲官方生產者價格指數','https://www.abs.gov.au/statistics/economy/price-indexes-and-inflation/producer-price-indexes-australia')}
     return {'items':items,'country':country,'reference':links.get(country),
-            'message':'美國使用 BLS 廢銅價格指數；與台灣鋼筋是不同商品，只比較各自走勢，不計算價差。' if country=='us' else '尚未接入可核對規格的此國金屬價格。官方統計入口可查閱，但不是已完成的價格比較。',
+            'message':'美國使用 BLS 廢鋼價格指數；與台灣成品鋼材是不同商品，只比較各自走勢，不計算價差。' if country=='us' else '尚未接入可核對規格的此國金屬價格。官方統計入口可查閱，但不是已完成的價格比較。',
             'radar':radar()}
+
+
+@router.get('/highlights')
+def highlights():
+    reps=engine.representative_settings();items=[];fx=month_fx();catalog={s['id']:s for s in engine.all_series()}
+    for id,label in [('wb_copper','銅'),('wb_aluminum','鋁'),('wb_nickel','鎳'),('wb_iron_ore','鐵礦砂'),('bls_steel_scrap','美國廢鋼指數')]+[(v,{'tw_rebar':'台灣鋼筋','tw_hbeam':'台灣H型鋼','tw_plate':'台灣鋼板'}[k]) for k,v in reps.items()]:
+        rows=engine.observations(id) if id else []
+        c=changes(rows,3);latest=rows[-1] if rows else None
+        entry={'id':id,'label':label,'period':latest['period'] if latest else None,'value':latest['value'] if latest else None,'unit':catalog.get(id,{}).get('unit'),'source_url':catalog.get(id,{}).get('source_url'),'change':c,'reason':None if c else '缺少本期或確切三個月前的同規格資料；未補值、未混合規格。','fx_impact':None}
+        if id=='wb_copper' and c:
+            a,b=c['base_period'],c['period']
+            if a in fx and b in fx:
+                usd=c['percent']/100;rate=fx[b]['rate']/fx[a]['rate']-1
+                entry['fx_impact']={'usd_percent':usd*100,'fx_percent':rate*100,'twd_percent':((1+usd)*(1+rate)-1)*100,'formula':'(本期美元價×本期月均匯率／基期美元價／基期月均匯率−1)×100；每月至少10筆日匯率'}
+            else:entry['fx_reason']='缺少本期或三個月前的同月足量匯率，不能計算台幣影響。'
+        items.append(entry)
+    return {'items':items,'note':'比較各指標自身最近可得月份與三個月前的變化，不同資料月份不代表同期。月資料不是今日成交價，不能推算跨商品套利價差。'}
 
 
 @router.get('/trend')

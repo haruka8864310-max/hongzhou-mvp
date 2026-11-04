@@ -14,7 +14,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 import certifi
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 import market
 
@@ -26,7 +26,7 @@ BLS_URL='https://api.bls.gov/publicAPI/v1/timeseries/data/'
 PCC='https://pcic.pcc.gov.tw/pwc-web/api/service/opendata-file/document/'
 PROVIDERS={
  'worldbank':dict(name='World Bank Pink Sheet 月度商品價格',url=WB_URL,license='World Bank CC BY 4.0；註明來源與換算，非原始交易所資料授權',terms='https://datacatalog.worldbank.org/public-licenses',frequency='每月；通常次月發布前月資料',history='銅／鋁／鎳自1960；鐵礦砂僅取2009起一致現貨口徑'),
- 'bls':dict(name='BLS 美國廢銅價格指數',url=BLS_URL,license='BLS 公有領域資料，註明來源；非廢銅成交價',terms='https://www.bls.gov/bls/linksite.htm',frequency='月度；可能修訂，初值另標記',history='免金鑰 API 最多10年／次，依實際回傳範圍顯示'),
+ 'bls':dict(name='BLS 美國廢鋼／廢銅價格指數',url=BLS_URL,license='BLS 公有領域資料，註明來源；非廢金屬成交價',terms='https://www.bls.gov/bls/linksite.htm',frequency='月度；可能修訂，初值另標記',history='免金鑰 API 最多10年／次，依實際回傳範圍顯示'),
  **{k:dict(name='工程會 '+name+' 訪價',url=PCC+quote(name+'.csv'),license='政府資料開放授權條款第1版；註明來源',terms='https://data.gov.tw/dataset/'+dataset,frequency='月度調查；目前下載可能僅單月快照',history='只保存實際回傳月份，不能生成缺少的歷史') for k,name,dataset in [('tw_rebar','鋼筋','6820'),('tw_plate','鋼板','6578'),('tw_hbeam','H型鋼','6577')]},
 }
 WB_COLUMNS={'Copper':('wb_copper','銅'),'Aluminum':('wb_aluminum','鋁'),'Nickel':('wb_nickel','鎳'),'Iron ore, cfr spot':('wb_iron_ore','鐵礦砂 62% Fe CFR')}
@@ -109,7 +109,7 @@ def download(provider):
     body=None
     if provider=='bls':
         year=datetime.now(timezone.utc).year
-        body=json.dumps({'seriesid':['WPU102301'],'startyear':str(year-9),'endyear':str(year)}).encode()
+        body=json.dumps({'seriesid':['WPU102301','WPU1012'],'startyear':str(year-9),'endyear':str(year)}).encode()
     headers={'User-Agent':'HongzhouLocalResearch/0.4','Accept':'*/*'}
     if body:headers['Content-Type']='application/json'
     context=ssl.create_default_context();context.load_verify_locations(certifi.where())
@@ -171,16 +171,22 @@ def parse_bls(raw):
     data=json.loads(raw)
     if data.get('status')!='REQUEST_SUCCEEDED':raise ValueError('BLS 拒絕請求：'+str(data.get('message'))[:200])
     rows=data['Results']['series']
-    if len(rows)!=1 or rows[0]['seriesID']!='WPU102301':raise ValueError('BLS 序列不符')
-    values=[]
-    for r in rows[0]['data']:
-        if not re.fullmatch(r'M(0[1-9]|1[0-2])',r['period']):continue
-        value=numeric(r['value'])
-        if value is not None:values.append((r['year']+'-'+r['period'][1:],value,'；'.join(x.get('text','') for x in r.get('footnotes',[]))))
-    if not values:raise ValueError('BLS 沒有月觀察')
-    meta=series_meta('bls_copper_scrap','BLS 美國廢銅價格指數','bls','INDEX','Index 1982=100','WPU102301；未季調',
-                     '生產者價格指數，非美元報價、非每公斤收購價；近期初值可能修訂。')
-    return [(meta,values)],None
+    definitions={'WPU102301':('bls_copper_scrap','美國廢銅價格指數'),'WPU1012':('bls_steel_scrap','美國廢鋼價格指數')}
+    result=[];seen=set()
+    for series in rows:
+        code=series['seriesID']
+        if code not in definitions or code in seen:raise ValueError('BLS 序列不符或重複')
+        seen.add(code);values=[]
+        for r in series['data']:
+            if not re.fullmatch(r'M(0[1-9]|1[0-2])',r['period']):continue
+            value=numeric(r['value'])
+            if value is not None:values.append((r['year']+'-'+r['period'][1:],value,'；'.join(x.get('text','') for x in r.get('footnotes',[]))))
+        if not values:raise ValueError('BLS '+code+' 沒有月觀察')
+        id,name=definitions[code]
+        meta=series_meta(id,name,'bls','INDEX','Index 1982=100',code+'；未季調','生產者價格指數，非美元報價、非每公斤收購價；近期初值可能修訂。')
+        result.append((meta,values))
+    if not result:raise ValueError('BLS 沒有序列')
+    return result,None
 
 
 def parse_taiwan(raw,provider):
@@ -244,11 +250,15 @@ def sync(force=True):
             now=datetime.now(timezone.utc)
             with market.connection() as c:prior=c.execute('SELECT checked_at,error FROM metal_updates WHERE provider=?',(provider,)).fetchone()
             seconds=max(3600 if provider=='bls' else 60,60 if force else cfg.update_hours*3600)
-            if prior and (now-datetime.fromisoformat(prior[0])).total_seconds()<seconds:
+            # One additional request when upgrading the old copper-only BLS feed.
+            # Failed attempts still obey cooldown; no repeated retry loop.
+            upgrade_bls=provider=='bls' and prior and not prior['error'] and not observations('bls_steel_scrap')
+            if prior and not upgrade_bls and (now-datetime.fromisoformat(prior[0])).total_seconds()<seconds:
                 results.append({'provider':provider,'ok':not bool(prior['error']),'skipped':True,'message':('上次來源失敗；' if prior['error'] else '')+'尚未到下次檢查時間，沿用本機資料'});continue
             try:
                 raw,modified=download(provider)
                 parsed,declared=parse_worldbank(raw) if provider=='worldbank' else parse_bls(raw) if provider=='bls' else parse_taiwan(raw,provider)
+                if provider=='bls' and {s['id'] for s,_ in parsed}!={'bls_steel_scrap','bls_copper_scrap'}:raise ValueError('BLS未完整回傳廢鋼與廢銅兩種序列，保留舊資料')
                 count,revisions=store(provider,parsed,declared or modified)
                 results.append({'provider':provider,'ok':True,'imported':count,'revisions':revisions,'message':f'新增 {count} 筆版本，其中修訂 {revisions} 筆；原版本保留'})
             except Exception as exc:
@@ -263,6 +273,61 @@ def sync(force=True):
 
 @router.post('/sync')
 def update():return sync(True)
+
+
+@router.post('/import-file')
+async def import_file(provider:str=Form(...),file:UploadFile=File(...)):
+    if provider not in PROVIDERS:raise HTTPException(400,'請選擇官方來源')
+    raw=await file.read(16*1024*1024+1)
+    if len(raw)>16*1024*1024:raise HTTPException(400,'檔案上限16MB')
+    if not LOCK.acquire(False):raise HTTPException(409,'資料正在更新，稍後再匯入')
+    try:
+        suffix=(file.filename or '').lower()
+        official_wb=False
+        if provider=='worldbank' and suffix.endswith('.xlsx'):
+            from openpyxl import load_workbook
+            with zipfile.ZipFile(io.BytesIO(raw)) as z:
+                if sum(x.file_size for x in z.infolist())>80*1024*1024:raise ValueError('Excel解壓超過上限')
+            book=load_workbook(io.BytesIO(raw),read_only=True,data_only=False)
+            try:official_wb='Monthly Prices' in book.sheetnames
+            finally:book.close()
+        if official_wb:parsed,modified=parse_worldbank(raw)
+        elif provider.startswith('tw_') and suffix.endswith('.csv') and not raw.lstrip(b'\xef\xbb\xbf').startswith(b'series_id,'):parsed,modified=parse_taiwan(raw,provider)
+        elif provider=='bls' and suffix.endswith('.json'):parsed,modified=parse_bls(raw)
+        else:
+            # Normalized CSV/XLSX supports existing known definitions only.
+            if suffix.endswith('.csv'):
+                records=list(csv.DictReader(io.StringIO(raw.decode('utf-8-sig'))))
+            elif suffix.endswith('.xlsx'):
+                from openpyxl import load_workbook
+                with zipfile.ZipFile(io.BytesIO(raw)) as z:
+                    if sum(x.file_size for x in z.infolist())>80*1024*1024:raise ValueError('Excel解壓超過上限')
+                book=load_workbook(io.BytesIO(raw),read_only=True,data_only=False)
+                try:
+                    values=book.active.iter_rows(values_only=True);headers=next(values)
+                    records=[]
+                    for row in values:
+                        if len(records)>=5000:raise ValueError('最多5000筆')
+                        records.append(dict(zip(headers,row)))
+                finally:book.close()
+            else:raise ValueError('支援官方Excel／CSV／BLS JSON，或標準化CSV／XLSX')
+            if not records or len(records)>5000:raise ValueError('需1至5000筆資料')
+            catalog={s['id']:s for s in all_series() if s['provider']==provider};group={}
+            for row in records:
+                if not {'series_id','period','value','source_url'}.issubset(row):raise ValueError('標準欄位：series_id,period,value,source_url')
+                s=catalog.get(row['series_id'])
+                if not s or row['source_url']!=s['source_url']:raise ValueError('請先更新官方資料建立規格，且來源網址須與選定來源完全相同')
+                value=numeric(row['value'])
+                if value is None:raise ValueError('價格不得空白')
+                group.setdefault(s['id'],(s,[]))[1].append((str(row['period']),value,'使用者檔案匯入；請核對原始官方來源'))
+            parsed=list(group.values());modified=None
+        # Record that the transport was a user file, rather than a successful HTTP fetch.
+        parsed=[(s,[(p,v,(n+'；使用者檔案匯入').strip('；')) for p,v,n in rows]) for s,rows in parsed]
+        count,revisions=store(provider,parsed,modified)
+        with market.connection() as c:c.execute('UPDATE metal_updates SET source_updated=? WHERE provider=?',('使用者檔案匯入，非自動下載',provider))
+        return {'ok':True,'message':f'檔案匯入成功：{count}筆版本，含{revisions}筆修訂；舊資料保留。'}
+    except Exception as exc:raise HTTPException(400,'檔案未匯入：'+str(exc)[:200]) from exc
+    finally:LOCK.release()
 
 
 @router.get('/status')
@@ -282,10 +347,67 @@ def observations(id):
     return list(latest.values())
 
 
+def representative_settings():
+    with market.connection() as c:row=c.execute("SELECT value FROM market_settings WHERE name='steel_representatives'").fetchone()
+    saved=json.loads(row[0]) if row else {}
+    result={}
+    for provider in ('tw_rebar','tw_hbeam','tw_plate'):
+        candidates=[s for s in all_series() if s['provider']==provider and observations(s['id'])]
+        if not candidates:result[provider]=None;continue
+        # Prefer the fixed rebar specification. Never mix regions or average prices.
+        candidates.sort(key=lambda s:(not (provider=='tw_rebar' and 'SD280，' in s['specification'] and 'D16mm' in s['specification'] and '北區' in s['specification']),-len(observations(s['id'])),s['specification']))
+        ids={s['id'] for s in candidates}
+        result[provider]=saved.get(provider) if saved.get(provider) in ids else candidates[0]['id']
+    if any(result.values()) and result!=saved:
+        with market.connection() as c:c.execute("INSERT INTO market_settings(name,value) VALUES('steel_representatives',?) ON CONFLICT(name) DO UPDATE SET value=excluded.value",(json.dumps(result),))
+    return result
+
+
+class Representatives(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    tw_rebar:str|None=None
+    tw_hbeam:str|None=None
+    tw_plate:str|None=None
+
+
+@router.get('/representatives')
+def get_representatives():return representative_settings()
+
+
+@router.put('/representatives')
+def save_representatives(value:Representatives):
+    ids={s['id']:s for s in all_series()}
+    for provider,id in value.model_dump().items():
+        if id is not None and (id not in ids or ids[id]['provider']!=provider or not observations(id)):
+            raise HTTPException(400,'代表規格不存在、沒有資料或商品類別不符')
+    with market.connection() as c:c.execute("INSERT INTO market_settings(name,value) VALUES('steel_representatives',?) ON CONFLICT(name) DO UPDATE SET value=excluded.value",(value.model_dump_json(),))
+    return representative_settings()
+
+
+def display_name(s):
+    names={'wb_copper':'國際銅價（月均價）','wb_aluminum':'國際鋁價（月均價）','wb_nickel':'國際鎳價（月均價）','wb_iron_ore':'國際鐵礦砂（月均價）','bls_steel_scrap':'美國廢鋼價格指數','bls_copper_scrap':'美國廢銅價格指數'}
+    if s['id'] in names:return names[s['id']]
+    if s['provider'].startswith('tw_'):
+        kind={'tw_rebar':'鋼筋','tw_hbeam':'H型鋼','tw_plate':'鋼板'}[s['provider']]
+        spec=s['specification'].replace('產品，','').replace(kind+'，','').replace('，熱軋','').replace('，', ' ')
+        region=s['specification'].split('／')[-1].replace('不分區價格','不分區').replace('不分區金額','不分區')
+        if s['provider']=='tw_rebar':
+            grade=re.search(r'SD\d+\w*',spec);size=re.search(r'D\d+mm',spec)
+            if grade and size:spec=grade[0]+' '+size[0]+'／'+region
+        elif s['provider']=='tw_hbeam':
+            size=re.search(r'H\d+×B\d+',spec)
+            if size:spec=size[0]+'／'+region
+        elif s['provider']=='tw_plate':
+            parts=s['specification'].split('，')
+            if len(parts)>=2:spec=' '.join(parts[-2:]).split('／')[0]+'／'+region
+        return '台灣'+kind+'（'+spec+'）'
+    return s['name']
+
+
 @router.get('/series')
 def get_series():
-    result=[]
+    result=[];reps=representative_settings()
     for s in all_series():
         rows=observations(s['id'])
-        if rows:result.append({**s,'count':len(rows),'first_period':rows[0]['period'],'latest':rows[-1]})
+        if rows:result.append({**s,'display_name':display_name(s),'category':'steel' if s['provider'].startswith('tw_') or s['id']=='bls_steel_scrap' else 'metals', 'representative':not s['provider'].startswith('tw_') and s['id']!='bls_copper_scrap' or s['id'] in reps.values(),'count':len(rows),'first_period':rows[0]['period'],'latest':rows[-1]})
     return result

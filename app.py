@@ -342,7 +342,9 @@ def home():
     html=(folder / 'market.html').read_text(encoding='utf-8')
     html=html.replace('<!--settings-panel-->',(folder / 'templates' / 'settings.html').read_text(encoding='utf-8'))
     html=html.replace('<!--decision-panel-->',(folder / 'templates' / 'decision.html').read_text(encoding='utf-8'))
-    return html.replace('<!--metals-panels-->',(folder / 'templates' / 'metals.html').read_text(encoding='utf-8'))
+    metals=(folder / 'templates' / 'metals.html').read_text(encoding='utf-8')
+    metals=metals.replace('<form id="metalSettings"',(folder / 'templates' / 'metal-controls.html').read_text(encoding='utf-8')+'<form id="metalSettings"')
+    return html.replace('<!--metals-panels-->',metals)
 
 
 @app.get('/legacy', response_class=HTMLResponse)

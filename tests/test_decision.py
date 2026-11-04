@@ -20,6 +20,7 @@ def test_briefing_countries_do_not_invent_prices(monkeypatch):
 
 
 def test_briefing_preserves_units_dates_and_staleness(monkeypatch):
+    monkeypatch.setattr(engine,'representative_settings',lambda:{})
     monkeypatch.setattr(engine,'all_series',lambda:[{'id':'wb_copper','provider':'worldbank','name':'TEST copper'}])
     monkeypatch.setattr(engine,'observations',lambda _: [{'period':'2020-01','value':10},{'period':'2020-02','value':12}])
     monkeypatch.setattr(analysis,'radar',lambda:{'signals':[]})
