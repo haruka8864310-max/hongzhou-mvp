@@ -21,6 +21,7 @@ test('market frontend integrated with FastAPI',async t=>{
     await waitFor(async()=>{try{return (await fetch(base+'/api/market/catalog')).ok;}catch{return false;}},'server '+logs);
     dom=new JSDOM(await (await fetch(base+'/')).text(),{url:base,runScripts:'outside-only',pretendToBeVisual:true});
     const w=dom.window,d=w.document;
+    w.AbortController=AbortController;
     const errors=[];w.addEventListener('error',e=>errors.push(e.message));
     // jsdom has no raster renderer; exercise chart data flow with a no-op context.
     w.HTMLCanvasElement.prototype.getContext=()=>({clearRect(){},fillText(){},beginPath(){},moveTo(){},lineTo(){},stroke(){},arc(){},fill(){}});
@@ -29,9 +30,14 @@ test('market frontend integrated with FastAPI',async t=>{
       return fetch(new URL(url,base),opts);
     };
     w.eval(fs.readFileSync(path.join(root,'assets','market.js'),'utf8'));
-    await waitFor(()=>d.querySelectorAll('#cards .card').length===11,'empty market cards');
+    await waitFor(()=>d.querySelectorAll('#cards .card').length===11&&d.getElementById('updated').textContent.includes('已連線'),'empty market cards');
     await t.test('empty state, navigation and legal source guide',async()=>{
       assert.match(d.getElementById('cards').textContent,/尚無資料/);
+      assert.equal(d.getElementById('trendSeries').disabled,true);
+      assert.match(d.getElementById('trendSeries').textContent,/尚無已取得/);
+      assert.equal(d.getElementById('researchSeries').disabled,true);
+      assert.equal(d.getElementById('runResearch').disabled,true);
+      assert.match(d.getElementById('researchResult').textContent,/沒有豐興廢鋼/);
       for(const id of ['compare','research','radar','data','overview']){d.querySelector(`nav [data-page="${id}"]`).click();assert.equal(d.getElementById(id).hidden,false);assert.equal([...d.querySelectorAll('main > section')].filter(x=>!x.hidden).length,1);}
       assert.equal((await fetch(base+'/market-guide')).status,200);
     });
@@ -80,6 +86,32 @@ test('market frontend integrated with FastAPI',async t=>{
       await waitFor(()=>d.getElementById('radarResult').textContent.includes('沒有符合'),'radar result');
       assert.match(d.getElementById('radarResult').textContent,/不代表沒有風險/);
       assert.deepEqual(errors,[]);
+    });
+    async function diagnosticWindow(url,handler,raw=false){
+      const instance=new JSDOM(raw?fs.readFileSync(path.join(root,'market.html'),'utf8'):await (await fetch(base+'/')).text(),{url,runScripts:'outside-only'});
+      const win=instance.window;win.AbortController=AbortController;
+      win.HTMLCanvasElement.prototype.getContext=()=>({clearRect(){},fillText(){},beginPath(){},moveTo(){},lineTo(){},stroke(){},arc(){},fill(){}});
+      const consoleErrors=[];win.console.error=(...args)=>consoleErrors.push(args.map(String).join(' '));
+      win.fetch=handler;
+      await win.eval(fs.readFileSync(path.join(root,'assets','market.js'),'utf8'));
+      return {win,doc:win.document,consoleErrors};
+    }
+    await t.test('direct HTML opening gives actionable diagnosis without a fetch or crash',async()=>{
+      let calls=0;
+      const {win,doc}=await diagnosticWindow('file:///C:/test/market.html',async()=>{calls++;throw Error('must not fetch');},true);
+      try{assert.equal(calls,0);assert.match(doc.getElementById('globalStatus').textContent,/直接開啟.*HTML/);assert.match(doc.getElementById('globalStatus').textContent,/start_windows.bat/);assert.equal(doc.getElementById('runResearch').disabled,true);assert.equal(doc.getElementById('retryConnection').hidden,false);}finally{win.close();}
+    });
+    await t.test('wrong static server or stale backend does not leave blank controls',async()=>{
+      const {win,doc,consoleErrors}=await diagnosticWindow('http://127.0.0.1:5500/market.html',async()=>new Response('Not Found',{status:404}),true);
+      try{assert.match(doc.getElementById('globalStatus').textContent,/HTTP 404/);assert.match(doc.getElementById('cards').textContent,/服務尚未連線/);assert.match(doc.getElementById('researchSeries').textContent,/本機服務未連線/);assert.ok(consoleErrors.length>0);}finally{win.close();}
+    });
+    await t.test('connection refusal reports the exact same-origin API and records console cause',async()=>{
+      const {win,doc,consoleErrors}=await diagnosticWindow(base+'/',async(url)=>{if(new URL(url).pathname==='/api/health')return fetch(url);throw new TypeError('Failed to fetch');});
+      try{assert.match(doc.getElementById('globalStatus').textContent,/無法連線至本機服務/);assert.match(doc.getElementById('globalStatus').textContent,/\/api\/market\/catalog/);assert.doesNotMatch(doc.getElementById('globalStatus').textContent,/Failed to fetch/);assert.ok(consoleErrors.some(x=>x.includes('Failed to fetch')));}finally{win.close();}
+    });
+    await t.test('source-status failure does not prevent overview rendering',async()=>{
+      const {win,doc}=await diagnosticWindow(base+'/',async(url,opts)=>new URL(url).pathname==='/api/market/sources'?new Response(JSON.stringify({detail:'TEST source status failure'}),{status:503,headers:{'Content-Type':'application/json'}}):fetch(url,opts));
+      try{assert.ok(doc.querySelectorAll('#cards .card').length>0);assert.match(doc.getElementById('globalStatus').textContent,/來源狀態讀取失敗/);}finally{win.close();}
     });
     await t.test('settings form persists selection, frequency, period and thresholds',async()=>{
       d.querySelector('nav [data-page="data"]').click();

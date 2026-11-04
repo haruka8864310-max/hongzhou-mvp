@@ -1,5 +1,5 @@
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse, RedirectResponse
 from pydantic import BaseModel, Field, ConfigDict
 from contextlib import contextmanager, asynccontextmanager
 from threading import RLock
@@ -48,6 +48,20 @@ app = FastAPI(title='弘洲營運助手', lifespan=lifespan)
 app.include_router(market.router)
 app.mount('/assets', StaticFiles(directory=Path(__file__).parent / 'assets'), name='assets')
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=['localhost', '127.0.0.1', '[::1]', 'testserver'])
+
+
+@app.get('/api/health')
+def health():
+    with connect() as c:
+        c.execute('SELECT id FROM market_quotes LIMIT 1').fetchone()
+        version = c.execute('SELECT MAX(version) FROM schema_migrations').fetchone()[0]
+    return {'app':'hongzhou-metal-market','ui_contract':'market-repair-1','database':'ok','schema_version':version,'data_directory':str(ROOT.resolve())}
+
+
+@app.get('/market.html', include_in_schema=False)
+@app.get('/index.html', include_in_schema=False)
+def canonical_home():
+    return RedirectResponse('/')
 
 
 @app.middleware('http')

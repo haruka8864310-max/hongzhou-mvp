@@ -2,6 +2,17 @@
 
 日期：2026-11-04。所有測試使用獨立資料庫與明確標示的合成測試資料，不將測試報價寫入正式資料，不把測試數字展示為真實行情。
 
+## 最新：空白卡片、空選單及 Failed to fetch 修復
+
+- 診斷、修復、啟動日誌與操作步驟見 [修復驗收](REPAIR_ACCEPTANCE.md)。重現原始 HTML 缺少設定區時的 null.addEventListener 中斷；當次本機亦無執行中的 Python 服務／8765 監聽。未宣稱讀到使用者原瀏覽器 DevTools。
+- Python：`pytest -q --basetemp=.test-runs/repair-final`，**51 passed**，1 項既有 TestClient 棄用警告。
+- JavaScript 語法與 `pip check` 通過。DOM 前端回歸 **10 個情境通過**（Node runner 含父測試顯示 11）：加入 file://、錯誤埠／靜態服務、連線中斷、來源狀態 API 503、無歷史資料的選單／按鈕守門。
+- 真實更新按鈕、重新載入、歷史圖表與空豐興研究的整合測試 **1 項通過**。首輪獨立驗收庫新增 777 筆、各幣 259 筆，241 個對齊比較日；重新載入筆數不變。最終版本重跑新增 0 筆、沒有覆寫歷史，19 筆同 origin API 請求全部 HTTP 200、DOM Console 錯誤零。報告存於忽略的 `.test-runs/repair-live-20261104/network-report-final.json`。
+- 使用修復後 `run_local.py --no-browser` 啟動 `127.0.0.1:8765`，日誌證明 FastAPI／SQLite readiness 正常；正式資料未被讀寫或覆蓋。驗收後關閉測試服務，避免與正式使用的資料目錄混淆。
+- 實際瀏覽器服務仍不可用，這些請求／Console 記錄來自真實 HTTP＋jsdom，不冒稱 Edge／Chrome DevTools 或視覺驗收。
+
+下方段落為先前版本的歷史驗證紀錄，不是本次最後測試數量。
+
 ## 本次增修：真實來源、永久設定與亮色 UI
 
 以下是本次最新驗證；下方「後端與資料分析」等段落保留先前版本紀錄。
