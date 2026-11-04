@@ -1,6 +1,10 @@
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
+from contextlib import contextmanager, asynccontextmanager
+from threading import RLock
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.responses import JSONResponse
 from pathlib import Path
 from datetime import datetime
 import io
@@ -8,6 +12,8 @@ import os
 import sqlite3
 import tempfile
 import zipfile
+import market
+from fastapi.staticfiles import StaticFiles
 
 
 def resolve_data_root() -> Path:
@@ -18,24 +24,59 @@ def resolve_data_root() -> Path:
 
 
 ROOT = resolve_data_root()
-ROOT.mkdir(parents=True, exist_ok=True)
 DB = ROOT / 'hongzhou.db'
 BACKUPS = ROOT / 'backups'
-BACKUPS.mkdir(parents=True, exist_ok=True)
-app = FastAPI(title='弘洲營運助手')
+DB_LOCK = RLock()
+MAX_BACKUP_BYTES = 256 * 1024 * 1024
 
 
+@asynccontextmanager
+async def lifespan(application):
+    setup_database()
+    yield
+
+
+app = FastAPI(title='弘洲營運助手', lifespan=lifespan)
+app.include_router(market.router)
+app.mount('/assets', StaticFiles(directory=Path(__file__).parent / 'assets'), name='assets')
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=['localhost', '127.0.0.1', '[::1]', 'testserver'])
+
+
+@app.middleware('http')
+async def protect_local_requests(request, call_next):
+    from urllib.parse import urlsplit
+    origin = request.headers.get('origin')
+    if request.method not in ('GET', 'HEAD', 'OPTIONS'):
+        if request.headers.get('sec-fetch-site') == 'cross-site' or (origin and urlsplit(origin).netloc != request.headers.get('host')):
+            return JSONResponse({'detail': '僅接受同來源操作'}, status_code=403)
+    response = await call_next(request)
+    response.headers['Cache-Control'] = 'no-store'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    return response
+
+
+@contextmanager
 def connect(database_path: Path | None = None):
-    target = database_path or DB
-    con = sqlite3.connect(target)
-    con.row_factory = sqlite3.Row
-    con.execute('PRAGMA foreign_keys=ON')
-    return con
+    with DB_LOCK:
+        con = sqlite3.connect(database_path or DB, timeout=15)
+        con.row_factory = sqlite3.Row
+        con.execute('PRAGMA foreign_keys=ON')
+        try:
+            with con:
+                yield con
+        finally:
+            con.close()
 
 
 def setup_database():
     ROOT.mkdir(parents=True, exist_ok=True)
     BACKUPS.mkdir(parents=True, exist_ok=True)
+    # Snapshot existing databases before the first additive market migration.
+    if DB.exists():
+        with connect() as c:
+            has_market = c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='market_quotes'").fetchone()
+        if not has_market:
+            backup_database(as_zip=False)
     with connect() as c:
         c.execute(
             """CREATE TABLE IF NOT EXISTS prices(
@@ -79,13 +120,15 @@ def setup_database():
         c.execute(
             "INSERT OR IGNORE INTO schema_migrations(version) VALUES (1)"
         )
+        market.migrate(c)
     return DB
 
 
-setup_database()
+class InputModel(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, allow_inf_nan=False)
 
 
-class Price(BaseModel):
+class Price(InputModel):
     date: str
     market: str = Field(min_length=1, max_length=80)
     product: str = Field(min_length=1, max_length=80)
@@ -94,14 +137,14 @@ class Price(BaseModel):
     note: str = ''
 
 
-class Customer(BaseModel):
+class Customer(InputModel):
     name: str = Field(min_length=1, max_length=150)
     address: str = ''
     phone: str = ''
     note: str = ''
 
 
-class Trade(BaseModel):
+class Trade(InputModel):
     date: str
     customer_id: int | None = None
     kind: str
@@ -129,9 +172,9 @@ def backup_database(as_zip: bool = True, target_root: Path | None = None) -> Pat
         try:
             with tempfile.NamedTemporaryFile(suffix='.db', dir=target_root, delete=False) as tmp:
                 temp_db = Path(tmp.name)
-            with connect() as src, sqlite3.connect(temp_db) as dest:
+            with connect() as src, connect(temp_db) as dest:
                 src.backup(dest)
-            with sqlite3.connect(temp_db) as check:
+            with connect(temp_db) as check:
                 if check.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
                     raise HTTPException(500, '資料庫完整性檢查失敗')
             with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as archive:
@@ -148,13 +191,53 @@ def backup_database(as_zip: bool = True, target_root: Path | None = None) -> Pat
                 except PermissionError:
                     pass
     backup_path = target_root / f'hongzhou-{timestamp}.db'
-    with connect() as src, sqlite3.connect(backup_path) as dest:
+    with connect() as src, connect(backup_path) as dest:
         src.backup(dest)
     return backup_path
 
 
+def validate_database(path: Path):
+    required = {
+        'prices': {'id', 'date', 'market', 'product', 'price', 'unit', 'note', 'created_at'},
+        'customers': {'id', 'name', 'address', 'phone', 'note'},
+        'trades': {'id', 'date', 'customer_id', 'kind', 'material', 'kg', 'unit_price', 'transport', 'note', 'created_at'},
+    }
+    with connect(path) as c:
+        if c.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
+            raise ValueError('資料庫完整性檢查失敗')
+        for table, columns in required.items():
+            if not columns.issubset({r['name'] for r in c.execute(f'PRAGMA table_info({table})')}):
+                raise ValueError('備份缺少必要欄位')
+        if c.execute('PRAGMA foreign_key_check').fetchone():
+            raise ValueError('備份客戶關聯無效')
+        if c.execute("SELECT 1 FROM sqlite_master WHERE name='schema_migrations'").fetchone():
+            version = c.execute('SELECT COALESCE(MAX(version),0) FROM schema_migrations').fetchone()[0]
+            if version > 2:
+                raise ValueError('備份版本較新，請先升級程式')
+            if version >= 2:
+                columns = {r['name'] for r in c.execute('PRAGMA table_info(market_quotes)')}
+                if not set(market.CSV_FIELDS + ['id', 'updated_at', 'method']).issubset(columns):
+                    raise ValueError('行情資料表欄位不完整')
+                for row in c.execute('SELECT * FROM market_quotes'):
+                    market.Quote(**{name: row[name] for name in market.CSV_FIELDS})
+        for table, model in [('prices', Price), ('customers', Customer), ('trades', Trade)]:
+            for row in c.execute(f'SELECT * FROM {table}'):
+                model(**dict(row))
+                if table != 'customers':
+                    date_ok(row['date'])
+                if table == 'trades' and row['kind'] not in ('buy', 'sell'):
+                    raise ValueError('備份交易類型無效')
+
+
 def restore_database(backup_file: str | Path, target_root: Path | None = None) -> Path:
+    with DB_LOCK:
+        return _restore_database(backup_file, target_root)
+
+
+def _restore_database(backup_file: str | Path, target_root: Path | None = None) -> Path:
     backup_path = Path(backup_file)
+    if not backup_path.is_file() or backup_path.stat().st_size > MAX_BACKUP_BYTES:
+        raise ValueError('備份不存在或超過 256 MB')
     target_root = (target_root or ROOT).resolve()
     target_root.mkdir(parents=True, exist_ok=True)
     target_db = target_root / 'hongzhou.db'
@@ -162,8 +245,10 @@ def restore_database(backup_file: str | Path, target_root: Path | None = None) -
     if backup_path.suffix.lower() == '.zip':
         with zipfile.ZipFile(backup_path) as archive:
             names = archive.namelist()
-            if 'hongzhou.db' not in names:
+            if names.count('hongzhou.db') != 1:
                 raise ValueError('ZIP 內沒有 hongzhou.db')
+            if archive.getinfo('hongzhou.db').file_size > MAX_BACKUP_BYTES:
+                raise ValueError('解壓後資料庫超過 256 MB')
             extracted = archive.read('hongzhou.db')
         with tempfile.NamedTemporaryFile(suffix='.db', dir=target_root, delete=False) as tmp:
             tmp.write(extracted)
@@ -172,12 +257,7 @@ def restore_database(backup_file: str | Path, target_root: Path | None = None) -
         temp_db = backup_path
 
     try:
-        with sqlite3.connect(temp_db) as check:
-            if check.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
-                raise ValueError('資料庫損毀或不是有效資料庫')
-            tables = {row[0] for row in check.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-            if not {'prices', 'customers', 'trades'}.issubset(tables):
-                raise ValueError('不是有效的弘洲資料庫')
+        validate_database(temp_db)
 
         if target_db.exists():
             backup_target = (target_root / 'backups').resolve()
@@ -188,10 +268,14 @@ def restore_database(backup_file: str | Path, target_root: Path | None = None) -
             while candidate.exists():
                 candidate = backup_target / f'before-restore-{timestamp}-{counter}.db'
                 counter += 1
-            with sqlite3.connect(target_db) as src, sqlite3.connect(candidate) as dest:
+            with connect(target_db) as src, connect(candidate) as dest:
                 src.backup(dest)
+            validate_database(candidate)
 
-        target_db.write_bytes(temp_db.read_bytes())
+        with connect(temp_db) as src, connect(target_db) as dest:
+            src.backup(dest)
+        if target_db.resolve() == DB.resolve():
+            setup_database()
         return target_db
     finally:
         if temp_db != backup_path and temp_db.exists():
@@ -203,7 +287,17 @@ def restore_database(backup_file: str | Path, target_root: Path | None = None) -
 
 @app.get('/', response_class=HTMLResponse)
 def home():
+    return (Path(__file__).parent / 'market.html').read_text(encoding='utf-8')
+
+
+@app.get('/legacy', response_class=HTMLResponse)
+def legacy():
     return (Path(__file__).parent / 'index.html').read_text(encoding='utf-8')
+
+
+@app.get('/market-guide')
+def market_guide():
+    return FileResponse(Path(__file__).parent / 'docs' / 'MARKET_SOURCES.md', media_type='text/plain; charset=utf-8')
 
 
 @app.get('/api/prices')
@@ -282,15 +376,23 @@ def backup():
 async def restore(file: UploadFile = File(...)):
     if not file.filename or not file.filename.lower().endswith(('.zip', '.db')):
         raise HTTPException(400, '請上傳 .zip 或 .db 備份檔')
-    with tempfile.NamedTemporaryFile(suffix='.' + Path(file.filename).suffix.lstrip('.'), delete=False) as tmp:
-        content = await file.read()
-        tmp.write(content)
-        temp_file = Path(tmp.name)
+    temp_file = None
     try:
+        with tempfile.NamedTemporaryFile(suffix=Path(file.filename).suffix, delete=False) as tmp:
+            temp_file = Path(tmp.name)
+            size = 0
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > MAX_BACKUP_BYTES:
+                    raise HTTPException(413, '備份超過 256 MB')
+                tmp.write(chunk)
         restore_database(temp_file)
         return {'ok': True, 'message': '資料還原完成'}
+    except (ValueError, sqlite3.Error, zipfile.BadZipFile) as exc:
+        raise HTTPException(400, '備份無效或版本不支援，原資料未變更') from exc
     finally:
-        if temp_file.exists():
+        await file.close()
+        if temp_file and temp_file.exists():
             temp_file.unlink(missing_ok=True)
 
 
@@ -315,7 +417,7 @@ def portable_backup():
     snapshot = io.BytesIO()
     temp_db = backup_database(as_zip=False, target_root=BACKUPS)
     try:
-        with sqlite3.connect(temp_db) as check:
+        with connect(temp_db) as check:
             if check.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
                 raise HTTPException(500, '資料庫完整性檢查失敗')
         with zipfile.ZipFile(snapshot, 'w', zipfile.ZIP_DEFLATED) as archive:

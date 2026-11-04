@@ -24,3 +24,16 @@ Thumbs.db
 # Project outputs
 build/
 dist/
+
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3-*
+*.xlsx
+*.xls
+.env
+.env.*
+!.env.example
+.ui-test-data/
+.test-runs/
+node_modules/
