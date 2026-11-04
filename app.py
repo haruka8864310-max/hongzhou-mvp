@@ -16,6 +16,7 @@ import market
 import market_sources
 import metal_engine
 import metal_analysis
+import market_detail
 from fastapi.staticfiles import StaticFiles
 
 
@@ -50,6 +51,7 @@ app = FastAPI(title='弘洲營運助手', lifespan=lifespan)
 app.include_router(market.router)
 app.include_router(metal_engine.router)
 app.include_router(metal_analysis.router)
+app.include_router(market_detail.router)
 app.mount('/assets', StaticFiles(directory=Path(__file__).parent / 'assets'), name='assets')
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=['localhost', '127.0.0.1', '[::1]', 'testserver'])
 
@@ -59,7 +61,7 @@ def health():
     with connect() as c:
         c.execute('SELECT id FROM market_quotes LIMIT 1').fetchone()
         version = c.execute('SELECT MAX(version) FROM schema_migrations').fetchone()[0]
-    return {'app':'hongzhou-metal-market','ui_contract':'market-metals-2','database':'ok','schema_version':version,'data_directory':str(ROOT.resolve())}
+    return {'app':'hongzhou-metal-market','ui_contract':'market-detail-3','database':'ok','schema_version':version,'data_directory':str(ROOT.resolve())}
 
 
 @app.get('/market.html', include_in_schema=False)
@@ -267,6 +269,7 @@ def validate_database(path: Path):
                     metal_engine.numeric(row['value'])
                     datetime.strptime(row['period'],'%Y-%m')
                 metal_engine.validate(c)
+                market_detail.validate(c)
                 row=c.execute("SELECT value FROM market_settings WHERE name='metals'").fetchone()
                 if row:metal_engine.MetalSettings.model_validate_json(row[0])
         for table, model in [('prices', Price), ('customers', Customer), ('trades', Trade)]:
@@ -341,10 +344,10 @@ def home():
     folder = Path(__file__).parent
     html=(folder / 'market.html').read_text(encoding='utf-8')
     html=html.replace('<!--settings-panel-->',(folder / 'templates' / 'settings.html').read_text(encoding='utf-8'))
-    html=html.replace('<!--decision-panel-->',(folder / 'templates' / 'decision.html').read_text(encoding='utf-8'))
+    html=html.replace('<!--decision-panel-->',(folder / 'templates' / 'decision.html').read_text(encoding='utf-8').replace('<!--steel-updates-->',(folder / 'templates' / 'steel-updates.html').read_text(encoding='utf-8')))
     metals=(folder / 'templates' / 'metals.html').read_text(encoding='utf-8')
     metals=metals.replace('<form id="metalSettings"',(folder / 'templates' / 'metal-controls.html').read_text(encoding='utf-8')+'<form id="metalSettings"')
-    return html.replace('<!--metals-panels-->',metals)
+    return html.replace('<!--metals-panels-->',metals+(folder / 'templates' / 'detail.html').read_text(encoding='utf-8'))
 
 
 @app.get('/legacy', response_class=HTMLResponse)

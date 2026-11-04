@@ -4,16 +4,17 @@ const base=process.env.HONGZHOU_LIVE_UI_URL;
 async function wait(fn,label){for(let i=0;i<1500;i++){if(fn())return;await new Promise(r=>setTimeout(r,40));}throw Error('Timeout: '+label);}
 test('real monthly metal UI: chart, compare, leading, settings, failure isolation, reload',{skip:!base},async()=>{
  assert.ok(['127.0.0.1','localhost'].includes(new URL(base).hostname));
- const windows=[],requests=[],errors=[];let failUpdate=false;
+ const windows=[],requests=[],errors=[];let failUpdate=false,failDetail=false;
  async function load(){
   const dom=new JSDOM(await(await fetch(base)).text(),{url:base,runScripts:'outside-only',pretendToBeVisual:true});
   const w=dom.window,d=w.document;windows.push(w);w.AbortController=AbortController;
   let segments=0;w.HTMLCanvasElement.prototype.getContext=()=>({clearRect(){},fillText(){},beginPath(){},moveTo(){},lineTo(){segments++;},stroke(){},arc(){},fill(){}});
   w.addEventListener('error',e=>errors.push(e.message));w.console.error=(...v)=>errors.push(v.map(String).join(' '));
-  w.fetch=async(url,opts={})=>{const target=new URL(url,base);assert.equal(target.origin,new URL(base).origin);requests.push(target.pathname);if(failUpdate&&target.pathname==='/api/metals/sync')return new Response(JSON.stringify({ok:false,results:[{provider:'worldbank',ok:false,message:'TEST ONLY simulated offline'}]}),{headers:{'Content-Type':'application/json'}});return fetch(target,opts);};
+  w.fetch=async(url,opts={})=>{const target=new URL(url,base);assert.equal(target.origin,new URL(base).origin);requests.push(target.pathname);if(failDetail&&target.pathname==='/api/detail/view')return new Response(JSON.stringify({detail:'TEST detail unavailable'}),{status:503,headers:{'Content-Type':'application/json'}});if(failUpdate&&target.pathname==='/api/metals/sync')return new Response(JSON.stringify({ok:false,results:[{provider:'worldbank',ok:false,message:'TEST ONLY simulated offline'}]}),{headers:{'Content-Type':'application/json'}});return fetch(target,opts);};
   await w.eval(await(await fetch(new URL('/assets/market.js',base))).text());
   w.eval(await(await fetch(new URL('/assets/metals.js',base))).text());
   w.eval(await(await fetch(new URL('/assets/decision.js',base))).text());
+  w.eval(await(await fetch(new URL('/assets/detail.js',base))).text());
   await wait(()=>d.documentElement.dataset.metalsReady==='1'&&d.querySelectorAll('#metalCompareRows tr').length>=60,'actual monthly comparison');
   return {w,d,segments:()=>segments};
  }
@@ -64,6 +65,34 @@ test('real monthly metal UI: chart, compare, leading, settings, failure isolatio
   first.w.close();failUpdate=false;
   const reload=await load();assert.equal(reload.d.getElementById('metalMonths').value,'60');assert.equal(reload.d.getElementById('metalTrendMode').value,'fx_index');
   assert.equal(reload.d.querySelectorAll('#metalCompareRows tr').length,60);
+  await wait(()=>reload.d.querySelector('#decisionCopper [data-detail]'),'clickable copper');
+  reload.d.querySelector('#decisionCopper [data-detail]').click();
+  await wait(()=>reload.d.documentElement.dataset.detailReady==='m:wb_copper','copper detail');
+  assert.equal(reload.d.getElementById('detail').hidden,false);
+  assert.match(reload.d.getElementById('detailFrequency').textContent,/月度/);
+  for(const months of ['3','6','12']){
+   reload.d.getElementById('detailMonths').value=months;
+   reload.d.getElementById('detailMonths').dispatchEvent(new reload.w.Event('change'));
+   await wait(()=>reload.d.querySelectorAll('#detailRows tr').length===Number(months),'detail '+months+' months');
+  }
+  reload.d.getElementById('detailCompare').value='m:wb_aluminum';
+  reload.d.getElementById('detailCompare').dispatchEvent(new reload.w.Event('change'));
+  await wait(()=>reload.d.getElementById('detailCompareNote').textContent.includes('共同首期100'),'detail comparison');
+  failDetail=true;reload.d.getElementById('detailRefresh').click();
+  await wait(()=>reload.d.getElementById('detailStatus').textContent.includes('TEST detail unavailable'),'detail failure is visible');
+  assert.equal(reload.d.querySelectorAll('#detailRows tr').length,12);failDetail=false;
+  reload.d.querySelector('#detail [data-page=overview]').click();
+  assert.equal(reload.d.getElementById('overview').hidden,false);
+  reload.d.querySelector('#decisionSteel [data-detail]').click();
+  await wait(()=>reload.d.getElementById('detailTitle').textContent.includes('台灣'),'steel detail');
+  await wait(()=>reload.d.querySelectorAll('#detailRows tr').length===1,'steel only actual monthly snapshot');
+  assert.match(reload.d.getElementById('detailHistoryNote').textContent,/至少兩筆/);
+  await wait(()=>reload.d.querySelectorAll('#fhWeekly [data-detail]').length>=3,'confirmed weekly adjustment cards');
+  const scrap=[...reload.d.querySelectorAll('#fhWeekly [data-detail]')].find(n=>n.textContent.includes('廢鋼'));
+  assert.match(scrap.textContent,/維持平盤/);scrap.click();
+  await wait(()=>reload.d.getElementById('detailTitle').textContent.includes('廢鋼'),'weekly scrap detail');
+  assert.match(reload.d.getElementById('detailAnnouncement').textContent,/維持平盤/);
+  assert.equal(reload.d.querySelectorAll('#detailRows tr').length,0);
   reload.d.querySelector('nav [data-page="research"]').click();
   assert.match(reload.d.getElementById('researchResult').textContent,/沒有豐興/);
   assert.equal(reload.d.getElementById('runResearch').disabled,true);
