@@ -1,0 +1,26 @@
+# Python and environment
+.venv/
+venv/
+env/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+*.pyd
+
+# Local data and backups
+*.db
+*.sqlite3
+*.zip
+*.csv
+backups/
+*.log
+
+# Editor and OS
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Project outputs
+build/
+dist/
