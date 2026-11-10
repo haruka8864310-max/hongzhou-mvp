@@ -10,7 +10,7 @@ def bulletin(**changes):
 def test_monthly_detail_periods_statistics_and_comparison():
     with TestClient(app.app) as c:
         seed()
-        for months in (1,3,6,12,0):
+        for months in (1,3,6,12,36,0):
             r=c.get('/api/detail/view',params={'series':'m:wb_copper','months':months,'compare':'m:wb_aluminum'})
             assert r.status_code==200
             d=r.json();assert len(d['points'])==(months or 72)

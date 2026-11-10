@@ -147,7 +147,7 @@ def ranged(points,months,frequency,anchor=None):
 
 @router.get('/view')
 def view(series:str,months:int=12,mode:str='native',compare:str|None=None):
-    if months not in (0,1,3,6,12):raise HTTPException(400,'期間須為1、3、6、12個月或0全部')
+    if months not in (0,1,3,6,12,36):raise HTTPException(400,'期間須為1、3、6、12、36個月或0全部')
     all_data=datasets();s=all_data.get(series)
     if not s:raise HTTPException(404,'尚無此項歷史資料，請更新或手動錄入')
     original=s['points'];latest=original[-1] if original else None
