@@ -5,6 +5,8 @@ import app
 @pytest.fixture(autouse=True)
 def isolated_database(tmp_path, monkeypatch):
     import japan_sources
+    import fenghsin
+    monkeypatch.setattr(fenghsin,'fetch',lambda url:(_ for _ in ()).throw(RuntimeError('External network disabled in unit tests')))
     monkeypatch.setattr(japan_sources,'fetch',lambda url:(_ for _ in ()).throw(RuntimeError('External network disabled in unit tests')))
     monkeypatch.setenv('HONGZHOU_DISABLE_SCHEDULER', '1')
     monkeypatch.setattr(app, 'ROOT', tmp_path / 'data')

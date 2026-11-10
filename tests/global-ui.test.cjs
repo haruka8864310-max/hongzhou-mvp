@@ -12,7 +12,7 @@ test('global market real data, countries, version entry, history, compare and fa
  try{
   for(const name of ['market','metals','decision','detail','global'])await w.eval(await(await fetch(base+'/assets/'+name+'.js')).text());
   await wait(()=>d.documentElement.dataset.globalReady==='1','global init '+d.getElementById('globalMessage').textContent);
-  assert.equal(d.querySelectorAll('nav button:not([hidden])').length,6);
+  assert.equal(d.querySelectorAll('nav button:not([hidden])').length,5);
   assert.ok(d.querySelectorAll('#globalSummary .card').length>=3);
   d.querySelector('[data-global-country=JP]').click();
   assert.equal(d.getElementById('countries').hidden,false);

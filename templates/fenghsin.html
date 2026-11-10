@@ -1,0 +1,18 @@
+<div class="fh-hero" id="fhLatest">
+  <div><p class="fh-eyebrow">TAIWAN · FENG HSIN</p><h2>豐興價格中心</h2><p>先看價格與調價，再查看每週公告。只有實際取得的價格才會畫進走勢。</p></div>
+  <div><button id="fhUpdate">更新豐興歷史與公告</button><button class="subtle" id="fhAdvanced">進階資料管理</button></div>
+</div>
+<p id="fhMessage" class="notice" role="status">正在讀取本機豐興歷史…</p>
+<div id="fhCards" class="fh-cards"></div>
+<div class="panel" id="fhHistory">
+  <div class="fh-chart-head"><div><h2>豐興歷史走勢</h2><p id="fhChartNote">週盤 · 新台幣元／公噸</p></div><div class="fh-controls"><label>品項<select id="fhProduct"><option value="scrap">廢鋼收購價</option><option value="rebar">鋼筋基價</option><option value="sections">型鋼基價</option></select></label><label>期間<select id="fhPeriod"><option value="3">近3個月</option><option value="6" selected>近6個月</option><option value="12">近1年</option><option value="36">近3年</option><option value="0">全部歷史</option></select></label></div></div>
+  <p id="fhHistoryStatus" role="status">讀取中…</p>
+  <p id="fhValidation" class="notice"></p>
+  <div id="fhStats" class="fh-stats"></div>
+  <canvas id="fhChart" width="1100" height="350" role="img" aria-label="豐興絕對價格歷史折線圖" hidden></canvas>
+  <h3>公告調價（元／公噸）</h3><p class="muted">柱狀圖只使用明確公告的漲跌；平盤為0。缺少公告的日期不視為平盤。</p>
+  <p id="fhChangeStatus"></p><canvas id="fhChanges" width="1100" height="200" role="img" aria-label="豐興公告調價柱狀圖" hidden></canvas>
+  <h3>每週公告與來源</h3><p class="muted">點日期查看原始公告。直接報價、調價公告分開顯示；只有變動額時不顯示推測價格。</p>
+  <div class="scroll"><table><thead><tr><th>公告日期／原始來源</th><th>絕對價格</th><th>公告調價</th><th>資料類型與驗證</th><th>取得與口徑</th></tr></thead><tbody id="fhRows"></tbody></table></div>
+</div>
+<details class="panel"><summary>更新狀態、資料限制與回推檢查</summary><div id="fhSources"></div><p id="fhBackfill"></p><p>月均價與工程會鋼材參考價仍保留於進階資料管理，不併入豐興週盤。</p></details>

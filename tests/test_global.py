@@ -68,7 +68,7 @@ def test_v5_backup_upgrade_and_new_records_survive():
         assert c.get('/api/global/settings').json()=={'country':'JP','months':36,'mode':'index'}
         assert len(gm.available())==1
         with app.connect() as con:
-            con.execute('DROP TABLE global_quotes');con.execute('DELETE FROM schema_migrations WHERE version=5')
+            con.execute('DROP TABLE global_quotes');con.execute('DELETE FROM schema_migrations WHERE version>=5')
         app.setup_database()
         snapshots=list(app.BACKUPS.glob('hongzhou-*.db'));assert snapshots
         with sqlite3.connect(snapshots[-1]) as con:assert con.execute('SELECT MAX(version) FROM schema_migrations').fetchone()[0]==4

@@ -21,8 +21,8 @@ SOURCE_REVIEW = {
     'comex_hg': ('日內／日結算', '需確認 CME 資料授權；免費瀏覽不等於公司顯示／分析使用權。歷史產品另有條件。', 'https://www.cmegroup.com/market-data/license-data.html'),
     'lme_cu': ('日內／日結算', 'LME 即時、延遲、歷史及非顯示使用有不同授權，未確認免費公司用自動來源。', 'https://www.lme.com/en/about/faqs/market-data-faqs'),
     'shfe_cu': ('交易日／合約', 'SHFE 資訊有商業使用限制，未取得適用許可；不抓取延時頁面。', 'https://www.shfe.com.cn/disclaimer/'),
-    'fh_scrap': ('每週公告', '未找到明確允許自動保存與公司使用的免費牌價 API；需核對品級與含稅口徑。', 'https://www.fenghsin.com.tw/'),
-    'fh_rebar': ('每週公告', '未找到適用的免費授權 API；不從新聞轉載或未授權頁面擷取牌價。', 'https://www.fenghsin.com.tw/'),
+    'fh_scrap': ('每週公告', '首頁豐興價格中心已另外保存公開數值表；為供應商轉述，品級／稅別未載明，不混入此舊序列。', 'https://juyi-steel.tw/steel-price-trends/'),
+    'fh_rebar': ('每週公告', '首頁價格中心可自動取得公開數值事實，與月均及此舊手動序列分開；並非整站再利用授權。', 'https://juyi-steel.tw/steel-price-trends/'),
     'jp_h2': ('月度／地區區間', 'JISRI區間註明第三方日刊市況通信社，未確認再利用；東京製鐵自刊原品級另由日本連接器保存，不改稱H2或FOB。', 'https://www.jisri.or.jp/market'),
     'us_scrap': ('依指標，日／月／年', 'USGS 自製資料可開放利用，但年報統計不是即時廢鋼價；未導入不相同的替代品。', 'https://www.usgs.gov/centers/national-minerals-information-center/iron-and-steel-scrap-statistics-and-information'),
     'iron_ore': ('月／年背景資料', 'World Bank 個別資料集及第三方欄位須核對；本次未實作此來源。', 'https://www.worldbank.org/en/research/commodity-markets'),
@@ -285,6 +285,8 @@ def start_scheduler():
         while not stop.is_set():
             try:
                 if get_settings().auto_update:
+                    import fenghsin
+                    fenghsin.sync(force=False)
                     synchronize(force=False)
                     import metal_engine
                     metal_engine.sync(force=False)
