@@ -116,7 +116,7 @@ def capture_existing():
                 target='us_index'
             else:target='pcc_'+row['provider'][3:]
             unit='index' if row['currency']=='INDEX' else row['unit'].split('/')[-1]
-            count+=insert(c,dict(market=target,grade=row['specification'],delivery_term=BY_ID[target]['delivery_term'],currency=row['currency'],unit=unit,price=row['value'],quote_date=row['period'],published_at=None,frequency='monthly',source=engine.PROVIDERS[row['provider']]['name'],source_url=row['source_url'],license_note=row['license']),row['retrieved_at'],'metal:'+str(row['id']),'snapshot')
+            count+=insert(c,dict(market=target,grade=row['specification'],delivery_term=BY_ID[target]['delivery_term'],currency=row['currency'],unit=unit,price=row['value'],quote_date=row['period'],published_at=None,frequency='monthly',source=engine.PROVIDERS[row['provider']]['name'],source_url=row['source_url'],license_note=row['license']),row['retrieved_at'],'metal:'+str(row['id']),'imported' if '使用者檔案' in row['notes'] else 'snapshot')
         quotes=c.execute('SELECT * FROM market_quotes ORDER BY id').fetchall();fx={}
         mapping={'fh_scrap':'tw_scrap','fh_rebar':'tw_rebar','jp_h2':'jp_h2','us_scrap':'us_legacy','fx_usd':'fx_usd','fx_jpy':'fx_jpy','fx_cny':'fx_cny'}
         for row in quotes:
@@ -191,7 +191,8 @@ def statuses():
     result={}
     for item in CATALOG:
         state=monthly.get(item['provider'],{}) if item['provider']!='fx' else next((r for r in fx if r['instrument']=='fx_usd'),{})
-        result[item['id']]={'automatic':bool(item['provider']),'last_success_at':state.get('success_at'),'checked_at':state.get('checked_at'),'error':state.get('error'),'frequency':item['frequency'],'reason':item['reason'],'source_url':state.get('url') or item['url'],'license':state.get('license') or item['license']}
+        imported='使用者檔案' in str(state.get('source_updated',''))
+        result[item['id']]={'automatic':bool(item['provider']),'last_success_at':None if imported else state.get('success_at'),'last_import_at':state.get('success_at') if imported else None,'checked_at':state.get('checked_at'),'error':state.get('error'),'frequency':item['frequency'],'reason':item['reason'],'source_url':state.get('url') or item['url'],'license':state.get('license') or item['license']}
     return result
 
 

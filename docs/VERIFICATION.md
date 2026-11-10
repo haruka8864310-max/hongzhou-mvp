@@ -1,5 +1,13 @@
 # 驗證與驗收紀錄
 
+## 2026-11-10：全球廢鋼第一階段
+
+- 基線68項Python通過；增加統一行情、修訂、當時可得、CSV、v5備份還原、匯率修訂及匯入來源識別後，`pytest -q --basetemp=.test-runs/global-final`為 **75 passed**，1項既有Starlette/httpx棄用警告；`pip check`通過。
+- `node --test tests/market-ui.test.cjs tests/global-ui.test.cjs` **12 passed**。新真實HTTP／DOM驗收6項可見導覽、8國加國際輔助分區、36個月真實歷史、台幣換算、比較、手動寫入、讀取失敗保留資料，Console錯誤0。合成手動紀錄只在隔離庫，標明TEST。
+- `.test-runs/live-metals-vxfx16ud`實測五個月來源及央行成功；WB2620筆、BLS兩指數各117月、工程會31個原始規格／地區。銅120月舊比較及36月新走勢、61月匯率換算可用。工程會實際2026-04、BLS2026-09、WB2026-10、央行2026-10-30；來源落後未標即時。
+- 停止並重啟相同隔離資料目錄後，全球設定JP／36月／台幣模式仍保留，資料與圖表再次通過前端驗收。
+- 原生瀏覽器工具回報`The browser access host is unavailable`，未完成Edge／Chrome目視驗收。詳細市場狀態見[分批交付](GLOBAL_PHASE1.md)，API清單見[API盤點](GLOBAL_API_INVENTORY.md)。
+
 ## 豐興分層與金屬卡片詳細分析
 
 - `pytest -q --basetemp=.test-runs/detail-complete`：68 passed，1項既有Starlette/httpx棄用警告；`pip check`通過。

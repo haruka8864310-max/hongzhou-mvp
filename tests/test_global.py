@@ -84,6 +84,16 @@ def test_source_failure_keeps_snapshots(monkeypatch):
         assert c.get('/').status_code==200
 
 
+def test_file_import_is_not_reported_as_successful_http_fetch():
+    from test_metals import workbook
+    with TestClient(app.app) as c:
+        assert c.post('/api/metals/import-file',data={'provider':'worldbank'},files={'file':('official.xlsx',workbook())}).status_code==200
+        gm.capture_existing()
+        assert all(r['data_status']=='imported' for r in gm.available())
+        state=next(m for m in c.get('/api/global/overview').json()['items'] if m['id']=='global_copper')['state']
+        assert state['last_success_at'] is None and state['last_import_at']
+
+
 def test_fx_revision_is_kept_and_cross_rate_uses_same_source(monkeypatch):
     with TestClient(app.app) as c:
         cfg=market_sources.get_settings().model_dump();cfg['analysis_days']=365

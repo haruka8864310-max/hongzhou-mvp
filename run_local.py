@@ -12,7 +12,7 @@ import webbrowser
 
 PROJECT = Path(__file__).resolve().parent
 APP_ID = 'hongzhou-metal-market'
-UI_CONTRACT = 'market-detail-3'
+UI_CONTRACT = 'global-scrap-1'
 
 
 def read_health(base, expected_data_root=None):
