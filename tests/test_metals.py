@@ -130,7 +130,7 @@ def test_additive_v3_upgrade_keeps_original_quotes_and_snapshots(client):
     client.post('/api/customers',json={'name':'TEST UPGRADE'})
     with app.connect() as c:
         c.execute('DROP TABLE metal_observations');c.execute('DROP TABLE metal_series');c.execute('DROP TABLE metal_updates')
-        c.execute('DELETE FROM schema_migrations WHERE version=4')
+        c.execute('DELETE FROM schema_migrations WHERE version>=4')
     app.setup_database()
     assert client.get('/api/customers').json()[0]['name']=='TEST UPGRADE'
     assert client.get('/api/metals/series').json()==[]

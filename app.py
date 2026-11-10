@@ -17,6 +17,7 @@ import market_sources
 import metal_engine
 import metal_analysis
 import market_detail
+import global_market
 from fastapi.staticfiles import StaticFiles
 
 
@@ -52,6 +53,7 @@ app.include_router(market.router)
 app.include_router(metal_engine.router)
 app.include_router(metal_analysis.router)
 app.include_router(market_detail.router)
+app.include_router(global_market.router)
 app.mount('/assets', StaticFiles(directory=Path(__file__).parent / 'assets'), name='assets')
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=['localhost', '127.0.0.1', '[::1]', 'testserver'])
 
@@ -105,7 +107,7 @@ def setup_database():
             has_market = c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='market_quotes'").fetchone()
             has_versions = c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'").fetchone()
             version = c.execute('SELECT COALESCE(MAX(version),0) FROM schema_migrations').fetchone()[0] if has_versions else 0
-        if not has_market or version < 4:
+        if not has_market or version < 5:
             backup_database(as_zip=False)
     with connect() as c:
         c.execute(
@@ -153,6 +155,8 @@ def setup_database():
         market.migrate(c)
         market_sources.migrate(c)
         metal_engine.migrate(c)
+        global_market.migrate(c)
+    global_market.capture_existing()
     return DB
 
 
@@ -244,7 +248,7 @@ def validate_database(path: Path):
             raise ValueError('備份客戶關聯無效')
         if c.execute("SELECT 1 FROM sqlite_master WHERE name='schema_migrations'").fetchone():
             version = c.execute('SELECT COALESCE(MAX(version),0) FROM schema_migrations').fetchone()[0]
-            if version > 4:
+            if version > 5:
                 raise ValueError('備份版本較新，請先升級程式')
             if version >= 2:
                 columns = {r['name'] for r in c.execute('PRAGMA table_info(market_quotes)')}
@@ -272,6 +276,8 @@ def validate_database(path: Path):
                 market_detail.validate(c)
                 row=c.execute("SELECT value FROM market_settings WHERE name='metals'").fetchone()
                 if row:metal_engine.MetalSettings.model_validate_json(row[0])
+            if version >= 5:
+                global_market.validate(c)
         for table, model in [('prices', Price), ('customers', Customer), ('trades', Trade)]:
             for row in c.execute(f'SELECT * FROM {table}'):
                 model(**dict(row))
@@ -344,10 +350,16 @@ def home():
     folder = Path(__file__).parent
     html=(folder / 'market.html').read_text(encoding='utf-8')
     html=html.replace('<!--settings-panel-->',(folder / 'templates' / 'settings.html').read_text(encoding='utf-8'))
-    html=html.replace('<!--decision-panel-->',(folder / 'templates' / 'decision.html').read_text(encoding='utf-8').replace('<!--steel-updates-->',(folder / 'templates' / 'steel-updates.html').read_text(encoding='utf-8')))
+    read=lambda name:(folder / 'templates' / name).read_text(encoding='utf-8')
+    html=html.replace('<!--global-nav-->',read('global-nav.html'))
+    decision=read('decision.html').replace('<!--steel-updates-->',read('steel-updates.html'))
+    html=html.replace('<!--decision-panel-->',read('global-overview.html')+'<details class="panel"><summary>既有金屬摘要與豐興資料</summary>'+decision+'</details>')
+    html=html.replace('<!--global-compare-->',read('global-compare.html')).replace('<!--global-sources-->',read('global-sources.html'))
     metals=(folder / 'templates' / 'metals.html').read_text(encoding='utf-8')
     metals=metals.replace('<form id="metalSettings"',(folder / 'templates' / 'metal-controls.html').read_text(encoding='utf-8')+'<form id="metalSettings"')
-    return html.replace('<!--metals-panels-->',metals+(folder / 'templates' / 'detail.html').read_text(encoding='utf-8'))
+    start=metals.index('>')+1;end=metals.index('</section>')
+    metals=metals[:start]+read('global-analysis.html')+'<details class="panel"><summary>既有月度分析、來源設定與代表規格</summary>'+metals[start:end]+'</details>'+metals[end:]
+    return html.replace('<!--metals-panels-->',read('global.html')+metals+read('detail.html'))
 
 
 @app.get('/legacy', response_class=HTMLResponse)

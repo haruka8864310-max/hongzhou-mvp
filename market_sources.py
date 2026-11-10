@@ -214,6 +214,8 @@ def synchronize(force=True):
                     added = 0; changed = 0
                     quotes = [v for (i,d),v in valid.items() if i==instrument]
                     for q in quotes:
+                        import global_market
+                        global_market.record_fx(c,q,provider,now.isoformat())
                         row = c.execute('SELECT price FROM market_quotes WHERE instrument=? AND date=? AND specification=? AND contract=? AND currency=? AND unit=?',
                             (q.instrument,q.date.isoformat(),q.specification,q.contract,q.currency,q.unit)).fetchone()
                         if row:
@@ -286,6 +288,8 @@ def start_scheduler():
                     synchronize(force=False)
                     import metal_engine
                     metal_engine.sync(force=False)
+                    import global_market
+                    global_market.capture_existing()
             except Exception:
                 # A busy manual update or transient restore must not terminate the worker.
                 import logging

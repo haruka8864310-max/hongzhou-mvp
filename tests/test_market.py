@@ -39,7 +39,7 @@ def test_empty_dashboard_and_assets(client):
     assert len(client.get('/api/market/catalog').json()['instruments']) == 11
     for path in ['/', '/assets/market.js', '/assets/market.css', '/legacy']:
         assert client.get(path).status_code == 200
-    for title in ['市場總覽','跨市場比較','豐興行情研究','市場機會雷達','quoteform','csvform']:
+    for title in ['全球廢鋼市場總覽','國際市場比較','預測研究（尚未完成）','市場機會雷達','quoteform','csvform']:
         assert title in client.get('/').text
     assert len(client.get('/api/market/template').text.splitlines()) == 1
 
