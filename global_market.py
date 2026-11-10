@@ -1,5 +1,5 @@
 """Additive, revision-preserving market ledger and conservative point-in-time reads."""
-import csv,hashlib,io,json,math,threading
+import csv,hashlib,io,json,math,threading,re
 from datetime import date,datetime,timezone,timedelta
 from urllib.parse import urlsplit
 from fastapi import APIRouter,HTTPException,UploadFile,File
@@ -176,7 +176,13 @@ def available(as_of=None):
     with market.connection() as c:rows=c.execute('SELECT * FROM global_quotes WHERE retrieved_at<=? AND first_seen_at<=? AND (published_at IS NULL OR published_at<=?) ORDER BY retrieved_at,id',(stamp,stamp,stamp)).fetchall()
     # All vintage timestamps are normalized UTC before writing.
     result={}
-    for row in rows:result[(row['series_id'],row['quote_date'])]=dict(row)
+    for row in rows:
+        value=dict(row)
+        if value['origin'].startswith('tokyo|'):
+            value['document_url']=value['origin'].split('|')[1]
+            issued=re.search(r'公告日(\d{4}-\d{2}-\d{2})',value['license_note'])
+            value['published_date']=issued[1] if issued else None
+        result[(row['series_id'],row['quote_date'])]=value
     return sorted(result.values(),key=lambda r:(r['quote_date'],r['id']))
 
 
@@ -188,11 +194,15 @@ def stale(row):
 
 def statuses():
     monthly={r['provider']:r for r in engine.status()};fx=market_sources.source_status()['sources']
+    import japan_sources
+    tokyo=japan_sources.state()
     result={}
     for item in CATALOG:
-        state=monthly.get(item['provider'],{}) if item['provider']!='fx' else next((r for r in fx if r['instrument']=='fx_usd'),{})
+        state=tokyo if item['provider']=='tokyo' else monthly.get(item['provider'],{}) if item['provider']!='fx' else next((r for r in fx if r['instrument']=='fx_usd'),{})
         imported='使用者檔案' in str(state.get('source_updated',''))
-        result[item['id']]={'automatic':bool(item['provider']),'last_success_at':None if imported else state.get('success_at'),'last_import_at':state.get('success_at') if imported else None,'checked_at':state.get('checked_at'),'error':state.get('error'),'frequency':item['frequency'],'reason':item['reason'],'source_url':state.get('url') or item['url'],'license':state.get('license') or item['license']}
+        reason=item['reason']
+        if item['id'].startswith('pcc_') and state.get('latest_period'):reason='來源目前下載最新月份為'+state['latest_period']+'。'+reason
+        result[item['id']]={'automatic':bool(item['provider']),'last_success_at':None if imported else state.get('success_at'),'last_import_at':state.get('success_at') if imported else None,'checked_at':state.get('checked_at'),'error':state.get('error'),'frequency':item['frequency'],'reason':reason,'source_url':state.get('url') or item['url'],'license':japan_sources.FACT_USE if item['provider']=='tokyo' else state.get('license') or item['license']}
     return result
 
 
@@ -260,13 +270,19 @@ def history(series:str,months:int=12,mode:str='native',as_of:str|None=None):
     for r in selected:
         value=converted(r,all_rows) if mode=='twd' else r['price']
         if value is None:missing+=1;continue
-        points.append({'period':r['quote_date'],'value':value,'original_price':r['price'],'retrieved_at':r['retrieved_at'],'published_at':r['published_at']})
+        points.append({'period':r['quote_date'],'value':value,'original_price':r['price'],'retrieved_at':r['retrieved_at'],'published_at':r['published_at'],'published_date':r.get('published_date'),'source_url':r.get('document_url') or r['source_url']})
     unit=latest['currency']+'/'+latest['unit'] if mode=='native' else 'TWD/'+latest['unit']
     if mode=='index':
         base=points[0]['value'] if points else 1
         points=[{**p,'value':p['value']/base*100} for p in points];unit='本期首筆=100'
     change={'absolute':points[-1]['value']-points[0]['value'],'percent':(points[-1]['value']/points[0]['value']-1)*100} if len(points)>1 else None
-    return {'latest':latest,'points':points,'unit':unit,'change':change,'missing':missing,'stale':stale(latest),'reason':'至少兩筆實際價格才能顯示折線；調價0不是價格0，指數與產量不是廢鋼成交價。' if len(points)<2 else '只連接原始頻率觀察點，不補值。台幣換算保留原物理單位；原幣／標準化變化不代表套利。'}
+    reason='只連接原始頻率觀察點，不補值。台幣換算保留原物理單位；原幣／標準化變化不代表套利。'
+    if len(points)<2:
+        reason='至少兩筆實際價格才能顯示折線；調價0不是價格0，指數與產量不是廢鋼成交價。'
+        if latest['price'] is None:reason='只有調價資訊，缺少基準絕對價格；平盤不能代替價格，未繪製假圖。'
+        elif latest['market'].startswith('pcc_') and len(rows)==1:reason='工程會目前僅'+latest['quote_date']+'單月快照，缺少第二個同規格歷史觀察；未繪製假折線。'
+        elif mode=='twd' and not points:reason='缺少同日／同月足量且合法可用的匯率，或此為指數不能換算成台幣價格。'
+    return {'latest':latest,'points':points,'unit':unit,'change':change,'missing':missing,'stale':stale(latest),'reason':reason}
 
 
 @router.get('/compare')
@@ -288,7 +304,8 @@ def refresh():
     if not LOCK.acquire(False):raise HTTPException(409,'來源正在更新')
     results=[]
     try:
-        for label,fn in [('月度來源',lambda:engine.sync(True)),('日參考匯率',lambda:market_sources.synchronize(True))]:
+        import japan_sources
+        for label,fn in [('東京製鐵官方數值',lambda:japan_sources.sync(True)),('月度來源',lambda:engine.sync(True)),('日參考匯率',lambda:market_sources.synchronize(True))]:
             try:results.append({'name':label,**fn()})
             except Exception as exc:results.append({'name':label,'ok':False,'message':str(exc)[:250]})
         added=capture_existing()

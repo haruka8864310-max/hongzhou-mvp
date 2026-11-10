@@ -19,7 +19,7 @@ router = APIRouter(prefix='/api/market')
 CATALOG = [
     dict(id='fh_scrap', name='豐興廢鋼收購價', group='steel', currency='TWD', unit='t', cadence=10, url='https://www.fenghsin.com.tw/'),
     dict(id='fh_rebar', name='豐興鋼筋', group='steel', currency='TWD', unit='t', cadence=10, url='https://www.fenghsin.com.tw/'),
-    dict(id='jp_h2', name='日本 H2 廢鋼', group='steel', currency='JPY', unit='t', cadence=10, url='https://www.jisf.or.jp/'),
+    dict(id='jp_h2', name='日本 H2 廢鋼', group='steel', currency='JPY', unit='t', cadence=10, url='https://www.jisri.or.jp/market'),
     dict(id='us_scrap', name='美國廢鋼', group='steel', currency='USD', unit='short_ton', cadence=35, url='https://www.usgs.gov/centers/national-minerals-information-center/iron-and-steel-scrap-statistics-and-information'),
     dict(id='comex_hg', name='COMEX HG 銅期貨', group='copper', currency='USD', unit='lb', cadence=4, url='https://www.cmegroup.com/markets/metals/base/copper.html'),
     dict(id='lme_cu', name='LME 銅', group='copper', currency='USD', unit='t', cadence=4, url='https://www.lme.com/en/metals/non-ferrous/lme-copper'),

@@ -1,5 +1,7 @@
 # 指定工具評估
 
+2026-11-10新增pypdf 6.21.4（BSD-3-Clause，Python>=3.9，本專案3.11已測）：只讀官方PDF數值，無PDF解析器重複依賴、無需Poppler執行程式。以固定表頭／到貨條件／品級／日期驗證避免錯欄，讀第一頁價格，不把第二頁調價當價格。測試合成文字，不散布來源PDF；資料利用判斷另見JAPAN_CONNECTOR.md，不由套件授權推論資料授權。
+
 ## 本次月度分析補充
 
 查核 [statsmodels 的 pyproject](https://github.com/statsmodels/statsmodels/blob/main/pyproject.toml)：BSD-3-Clause、Python>=3.10，支援本專案3.11，依賴 NumPy／SciPy／pandas／patsy 等。[Darts目前定義](https://github.com/unit8co/darts/blob/master/pyproject.toml)為Apache-2.0、Python>=3.11，另有多項統計依賴，深度模型需要torch。Lightweight Charts為Apache-2.0並有署名／NOTICE要求，與FastAPI JSON相容，不提供報價本身。

@@ -13,8 +13,8 @@ CATALOG=[
  item('tw_rebar','TW','豐興鋼筋週牌價','需填實際鋼筋規格','出廠／稅別依來源','TWD','t','https://www.fenghsin.com.tw/'),
  item('tw_sections','TW','豐興型鋼週牌價','需填型鋼規格','出廠／稅別依來源','TWD','t','https://www.fenghsin.com.tw/'),
  item('tw_rebar_monthly','TW','豐興鋼筋歷史月均','來源盤價規格','月均非週牌價','TWD','t','https://chart.metaltrade.tw/ste/domestic/7/',frequency='monthly'),
- item('jp_tokyo','JP','東京製鐵廢鋼採購','需選工廠／檢收品級','工廠到貨條件','JPY','t','https://www.tokyosteel.co.jp/scrapprice/'),
- item('jp_h2','JP','日本H2國內','H2（地區另填）','國內到貨條件需核對','JPY','t','https://www.jisri.or.jp/'),
+ item('jp_tokyo','JP','東京製鐵廢鋼採購','各工廠官方原品級，不改名H2','工廠購入；非FOB','JPY','t','https://www.tokyosteel.co.jp/scrapprice/','tokyo',reason='官方自刊數值事實的受限萃取；保留來源，不複製PDF版面、全文或第三方資料。每次最多12期，遇robots禁止即停。',frequency='observed'),
+ item('jp_h2','JP','日本H2地區區間','H2，地區及區間端點分開','廠前實勢；非東京製鐵牌價','JPY','t','https://www.jisri.or.jp/market',reason='公開區間標明出所為日刊市況通信社，第三方再利用條件未確認，未自動下載保存。2023年4月起已停止三地區月均刊載。',frequency='monthly'),
  item('jp_fob','JP','日本H2出口FOB','H2','FOB 日本指定港','JPY','t','https://www.customs.go.jp/toukei/info/tsdl_e.htm',reason='官方貿易統計可下載，但HS申報均價不是固定H2牌價；尚未建立授權與口徑相符的自動連接器。'),
  item('us_hms','US','美國HMS 1/2','HMS 1/2（比例另填）','指定交貨條件','USD','t','https://www.usgs.gov/centers/national-minerals-information-center/iron-and-steel-scrap-statistics-and-information'),
  item('us_shredded','US','美國Shredded','Shredded（規格另填）','指定交貨條件','USD','short_ton','https://www.usgs.gov/centers/national-minerals-information-center/iron-and-steel-scrap-statistics-and-information'),
@@ -38,3 +38,6 @@ CATALOG=[
  item('steel_output','GLOBAL','粗鋼生產量','國別／統計範圍另填','產量，非價格','NA','million_t','https://worldsteel.org/data/about-our-data/',reason='公開摘要可註明來源引用，完整月歷史Excel有訂閱條件；本階段不接付費平台。',frequency='monthly'),
 ]
 BY_ID={r['id']:r for r in CATALOG}
+for record in CATALOG:
+    if record['id'].startswith('pcc_'):
+        record['reason']='工程會官方檔為訪價快照；以實際報價月份為準。下載成功不代表有最新週價或完整歷史，未找到可驗證的官方歷史下載清單。'

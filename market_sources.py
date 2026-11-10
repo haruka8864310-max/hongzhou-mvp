@@ -23,7 +23,7 @@ SOURCE_REVIEW = {
     'shfe_cu': ('交易日／合約', 'SHFE 資訊有商業使用限制，未取得適用許可；不抓取延時頁面。', 'https://www.shfe.com.cn/disclaimer/'),
     'fh_scrap': ('每週公告', '未找到明確允許自動保存與公司使用的免費牌價 API；需核對品級與含稅口徑。', 'https://www.fenghsin.com.tw/'),
     'fh_rebar': ('每週公告', '未找到適用的免費授權 API；不從新聞轉載或未授權頁面擷取牌價。', 'https://www.fenghsin.com.tw/'),
-    'jp_h2': ('每週／地區／出口口徑', 'H2 地區與 FOB／CFR 報價不同；未確認可免費自動公司使用的來源。', 'https://www.jisf.or.jp/'),
+    'jp_h2': ('月度／地區區間', 'JISRI區間註明第三方日刊市況通信社，未確認再利用；東京製鐵自刊原品級另由日本連接器保存，不改稱H2或FOB。', 'https://www.jisri.or.jp/market'),
     'us_scrap': ('依指標，日／月／年', 'USGS 自製資料可開放利用，但年報統計不是即時廢鋼價；未導入不相同的替代品。', 'https://www.usgs.gov/centers/national-minerals-information-center/iron-and-steel-scrap-statistics-and-information'),
     'iron_ore': ('月／年背景資料', 'World Bank 個別資料集及第三方欄位須核對；本次未實作此來源。', 'https://www.worldbank.org/en/research/commodity-markets'),
 }
@@ -290,6 +290,8 @@ def start_scheduler():
                     metal_engine.sync(force=False)
                     import global_market
                     global_market.capture_existing()
+                    import japan_sources
+                    japan_sources.sync(force=False)
             except Exception:
                 # A busy manual update or transient restore must not terminate the worker.
                 import logging

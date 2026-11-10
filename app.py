@@ -18,6 +18,7 @@ import metal_engine
 import metal_analysis
 import market_detail
 import global_market
+import japan_sources
 from fastapi.staticfiles import StaticFiles
 
 
@@ -54,6 +55,7 @@ app.include_router(metal_engine.router)
 app.include_router(metal_analysis.router)
 app.include_router(market_detail.router)
 app.include_router(global_market.router)
+app.include_router(japan_sources.router)
 app.mount('/assets', StaticFiles(directory=Path(__file__).parent / 'assets'), name='assets')
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=['localhost', '127.0.0.1', '[::1]', 'testserver'])
 
@@ -63,7 +65,7 @@ def health():
     with connect() as c:
         c.execute('SELECT id FROM market_quotes LIMIT 1').fetchone()
         version = c.execute('SELECT MAX(version) FROM schema_migrations').fetchone()[0]
-    return {'app':'hongzhou-metal-market','ui_contract':'global-scrap-1','database':'ok','schema_version':version,'data_directory':str(ROOT.resolve())}
+    return {'app':'hongzhou-metal-market','ui_contract':'japan-facts-2','database':'ok','schema_version':version,'data_directory':str(ROOT.resolve())}
 
 
 @app.get('/market.html', include_in_schema=False)
@@ -278,6 +280,7 @@ def validate_database(path: Path):
                 if row:metal_engine.MetalSettings.model_validate_json(row[0])
             if version >= 5:
                 global_market.validate(c)
+                japan_sources.validate(c)
         for table, model in [('prices', Price), ('customers', Customer), ('trades', Trade)]:
             for row in c.execute(f'SELECT * FROM {table}'):
                 model(**dict(row))
@@ -289,7 +292,7 @@ def validate_database(path: Path):
 
 def restore_database(backup_file: str | Path, target_root: Path | None = None) -> Path:
     # Same lock order as source updates: finish any in-flight download before restore.
-    with market_sources.UPDATE_LOCK, metal_engine.LOCK:
+    with market_sources.UPDATE_LOCK, metal_engine.LOCK, japan_sources.LOCK:
         with DB_LOCK:
             return _restore_database(backup_file, target_root)
 
@@ -354,7 +357,7 @@ def home():
     html=html.replace('<!--global-nav-->',read('global-nav.html'))
     decision=read('decision.html').replace('<!--steel-updates-->',read('steel-updates.html'))
     html=html.replace('<!--decision-panel-->',read('global-overview.html')+'<details class="panel"><summary>既有金屬摘要與豐興資料</summary>'+decision+'</details>')
-    html=html.replace('<!--global-compare-->',read('global-compare.html')).replace('<!--global-sources-->',read('global-sources.html'))
+    html=html.replace('<!--global-compare-->',read('global-compare.html')).replace('<!--global-sources-->',read('global-source-panel.html'))
     metals=(folder / 'templates' / 'metals.html').read_text(encoding='utf-8')
     metals=metals.replace('<form id="metalSettings"',(folder / 'templates' / 'metal-controls.html').read_text(encoding='utf-8')+'<form id="metalSettings"')
     start=metals.index('>')+1;end=metals.index('</section>')
