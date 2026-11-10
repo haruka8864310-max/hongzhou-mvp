@@ -35,6 +35,8 @@ def test_catalog_defaults_and_dual_native_curves(monkeypatch):
         # The page has unique FH center and legacy input IDs.
         assert c.get('/').text.count('id="fhProduct"')==1
         assert c.get('/').text.count('id="fhPeriod"')==1
+        summary=c.get('/api/scrap-analysis/summary').json()
+        assert len(summary['items'])==1 and summary['items'][0]['name']=='東京製鐵廢鋼採購'
 
 
 def test_index_base_age_and_no_future_quote(monkeypatch):
@@ -76,5 +78,21 @@ def test_validation_and_settings_restart(monkeypatch):
             assert c.get('/api/scrap-analysis/compare?'+query).status_code==422
         value={'months':36,'mode':'native','max_age_days':14}
         assert c.put('/api/scrap-analysis/settings',json=value).status_code==200
+        backup=c.get('/api/portable-backup').content
+        assert c.post('/api/restore',files={'file':('backup.zip',backup)}).status_code==200
     with TestClient(app.app) as c:
         assert c.get('/api/scrap-analysis/settings').json()['months']==36
+
+
+def test_monthly_adapter_reads_original_versions_without_ledger_duplicates():
+    from test_metals import seed
+    with TestClient(app.app) as c:
+        seed()
+        gm.capture_existing()
+        data=sa.datasets()
+        monthly=[s for s in data.values() if s['origin']=='metal_observations']
+        assert len(monthly)==4
+        assert all(len(s['points'])==72 for s in monthly)
+        assert not any(s['origin']=='global_quotes' for s in data.values())
+        assert all(p['date']>=p['quote_date'] and p['source_url'] for s in monthly for p in s['points'])
+        assert all(s['unit'] in ('t','dry_t') for s in monthly)

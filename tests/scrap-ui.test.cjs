@@ -33,6 +33,9 @@ test('real Feng Hsin Tokyo curves, native/index/TWD, periods, source dates and f
    assert.equal(d.querySelectorAll('#scrapLeading tr').length,5);
    assert.equal(d.querySelectorAll('#scrapForecast article').length,4);
    assert.match(d.getElementById('scrapForecast').textContent,/尚無可靠預測/);
+   d.querySelector('nav [data-page=research]').click();assert.equal(d.getElementById('scrapResearch').parentElement.id,'scrapResearchHost');
+   await wait(()=>!d.getElementById('scrapResearchRun').disabled,'research navigation');
+   d.querySelector('nav [data-page=overview]').click();assert.equal(d.getElementById('scrapResearch').parentElement.id,'scrapResearchHomeHost');
   }
   await wait(()=>pending===0,'settle');assert.deepEqual(errors,[]);
   console.log(JSON.stringify({sqlite_history_points:counts,canvas_segments:lines,source_links:true,homepage_and_analysis:true,failure_keeps_chart:true,research:process.env.HONGZHOU_RESEARCH_UI==='1',console_errors:errors}));

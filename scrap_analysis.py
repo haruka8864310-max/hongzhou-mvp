@@ -103,7 +103,8 @@ def datasets(as_of=None):
             continue
         s = result.setdefault(key, {'id': key, 'market': r['series_id'], 'country': 'TW' if r['provider'].startswith('tw_') else 'US' if r['provider']=='bls' else 'GLOBAL',
             'name': r['name'], 'scope': r['specification'], 'currency': r['currency'],
-            'unit': r['unit'], 'frequency': 'monthly', 'origin': 'metal_observations', 'points': [], 'conflicts': []})
+            'unit': r['unit'].split('/',1)[1] if r['unit'].startswith(r['currency']+'/') else r['unit'],
+            'frequency': 'monthly', 'origin': 'metal_observations', 'points': [], 'conflicts': []})
         # SQL insertion order chooses the latest version available at this cutoff.
         s['points'] = [old for old in s['points'] if old['date'] != p['date']] + [p]
     for s in result.values():
@@ -144,6 +145,26 @@ def catalog(as_of: str | None = None):
     b = next((s['id'] for s in items if s['market']=='jp_tokyo' and '岡山工場／二級' in s['scope']), '')
     b = b or next((s['id'] for s in items if s['market']=='jp_tokyo'), '')
     return {'items': items, 'defaults': {'a': a, 'b': b}, 'reason': '' if a and b else '缺少豐興絕對價格或東京製鐵歷史，請先更新來源；不以其他商品替代。'}
+
+
+@router.get('/summary')
+def summary():
+    import japan_sources
+    data=datasets()
+    preferred=catalog()['defaults']['b']
+    chosen=[preferred]+[next((key for key,s in data.items() if s['market'] in markets),'')
+        for markets in [('us_index','bls_steel_scrap'),('wb_iron_ore',),('fx_usd',),('fx_jpy',)]]
+    rows=[]
+    for key in chosen:
+        if key not in data:continue
+        s=data[key];last=s['points'][-1];prev=s['points'][-2] if len(s['points'])>=2 else None
+        rows.append({'id':key,'name':s['name'],'scope':s['scope'],'currency':s['currency'],
+            'unit':s['unit'],'frequency':s['frequency'],'latest':last,
+            'previous_date':prev['quote_date'] if prev else None,
+            'change_percent':(last['price']/prev['price']-1)*100 if prev else None,
+            'age_days':(clock().astimezone(TZ).date()-date.fromisoformat(last['date'])).days,
+            'source_error':japan_sources.state().get('error') if s['market']=='jp_tokyo' else None})
+    return {'items':rows,'note':'只列本機已有資料的代表指標；美國PPI是指數，鐵礦砂是輔助原料，不是HMS成交價。漲跌以各自前一筆實際觀察計算，月份與週盤不同步。'}
 
 
 def latest(points, day, max_age=35, origin=None):
@@ -249,3 +270,12 @@ def validate(c):
     row=c.execute("SELECT value FROM market_settings WHERE name='scrap_analysis'").fetchone()
     if row:
         Preferences.model_validate_json(row[0])
+
+
+@router.get('/research')
+def research(a:str='',b:str='',months:int=12,max_age_days:int=35,as_of:str|None=None):
+    import scrap_forecast
+    try:
+        return scrap_forecast.research(a,b,months,max_age_days,as_of)
+    except ValidationError as exc:
+        raise HTTPException(422, '研究期間或資料年齡門檻無效') from exc

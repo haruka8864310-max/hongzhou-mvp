@@ -93,3 +93,16 @@ def test_legacy_seven_site_and_explicit_suspended_column():
     import pytest
     for text in [legacy_layout(True).replace('休止中',''),legacy_layout().replace('10,000','',1)]:
         with pytest.raises(ValueError):jp.parse_legacy_layout(text,'2025-01-02')
+
+
+def test_completed_archive_does_not_clear_other_source_failures(monkeypatch):
+    with TestClient(app.app) as c:
+        jp.save_state({'checked_at':'2020-01-01T00:00:00+00:00','error':'TEST other year error',
+                       'failures':[{'reason':'TEST retained'}],'files':[]})
+        monkeypatch.setattr(jp,'robots',lambda:(None,'TEST allow'))
+        monkeypatch.setattr(jp,'fetch',lambda _:b'TEST')
+        monkeypatch.setattr(jp,'links',lambda _:[('2026-01-01',jp.PREFIX+'2026/2026.01.01.pdf')])
+        r=c.post('/api/japan/history?year=2025').json()
+        assert r['ok'] and r['skipped']
+        assert jp.state()['error']=='TEST other year error'
+        assert jp.state()['checked_at']!='2020-01-01T00:00:00+00:00'

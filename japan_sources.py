@@ -196,7 +196,10 @@ def sync(force=False,history_year=None):
         selected=listed[:1]+[(d,u) for d,u in listed[1:] if u not in done][:11]
         if history_year is not None:
             selected=sorted((d,u) for d,u in listed if d.startswith(str(history_year)+'-') and u not in done)[:12]
-            if not selected:return {'ok':True,'message':f'官方索引中{history_year}年已無尚未保存的價格表；未猜測其他網址。','skipped':True}
+            if not selected:
+                # A completed requested year must not erase another year's errors.
+                save_state({**before,'checked_at':stamp})
+                return {'ok':True,'message':f'官方索引中{history_year}年已無尚未保存的價格表；未猜測其他網址。','skipped':True}
         added=0;parsed_count=0;errors=[];files=[]
         for day,url in selected:
             try:
