@@ -61,3 +61,35 @@ def test_known_official_links_only_and_robots_denial(monkeypatch):
         result=c.post('/api/japan/update').json();assert not result['ok']
         assert gm.available()==[]
         assert 'robots' in result['message']
+
+
+def legacy_layout(suspended=False):
+    plants=jp.PLANTS if suspended else jp.PLANTS[:7]
+    centers=[22+i*12 for i in range(len(plants))]
+    header=[' ']*125
+    for p,x in zip(plants,centers):header[x-len(p)//2:x-len(p)//2+len(p)]=p
+    lines=['2025年1月1日','国内鉄スクラップ購入価格表','2025年1月2日',''.join(header)]
+    for indices,term in [(range(len(plants)),'陸上'),((0,2,5),'海上')]:
+        row=[' ']*125
+        for i in indices:row[centers[i]-1:centers[i]+1]=term
+        lines.append(''.join(row))
+    for grade in jp.GRADES:
+        row=[' ']*125;row[:len(grade)]=grade
+        for i,x in enumerate(centers):
+            if suspended and i==4:continue
+            row[x-3:x+3]='10,000'
+        lines.append(''.join(row))
+    if suspended:
+        row=[' ']*125;row[centers[4]-1:centers[4]+2]='休止中';lines.append(''.join(row))
+    return '\n'.join(lines)
+
+
+def test_legacy_seven_site_and_explicit_suspended_column():
+    assert len(jp.parse_legacy_layout(legacy_layout(),'2025-01-02')['prices'])==56
+    result=jp.parse_legacy_layout(legacy_layout(True),'2025-01-02')
+    assert len(result['prices'])==56
+    assert not any(p[0]=='高松' for p in result['prices'])
+    assert any(p[0]=='東京湾岸' for p in result['prices'])
+    import pytest
+    for text in [legacy_layout(True).replace('休止中',''),legacy_layout().replace('10,000','',1)]:
+        with pytest.raises(ValueError):jp.parse_legacy_layout(text,'2025-01-02')

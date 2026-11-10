@@ -11,7 +11,7 @@ from urllib.error import HTTPError
 from urllib.parse import urljoin,urlsplit
 from urllib.robotparser import RobotFileParser
 import certifi
-from fastapi import APIRouter,HTTPException
+from fastapi import APIRouter,HTTPException,Query
 import market
 
 router=APIRouter(prefix='/api/japan')
@@ -112,7 +112,64 @@ def parse_pdf(raw,expected):
     reader=PdfReader(io.BytesIO(raw),strict=True)
     if reader.is_encrypted or not 1<=len(reader.pages)<=4:raise ValueError('PDF頁數或加密狀態不符')
     # Only the absolute-price page, never the second-page adjustment table.
-    return parse_layout(reader.pages[0].extract_text(extraction_mode='layout'),expected)
+    text=reader.pages[0].extract_text(extraction_mode='layout')
+    try:return parse_layout(text,expected)
+    except ValueError:
+        return parse_legacy_layout(text,expected)
+
+
+def parse_legacy_layout(text,expected):
+    """Explicit 2025 7-site / 8-site-with-suspended-site layouts.
+
+    Map price coordinates to the printed header, never shift blank cells left.
+    A blank site is accepted ONLY if the document explicitly says suspended.
+    """
+    if '国内鉄スクラップ購入価格表' not in normal(text):raise ValueError('不是官方購入表')
+    dates=re.findall(r'(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日',text)
+    if len(dates)<2:raise ValueError('缺少公告日／適用日')
+    issued,effective=[date(*map(int,d)).isoformat() for d in dates[:2]]
+    if effective!=expected or issued>effective:raise ValueError('公告／適用日期不符')
+    lines=text.splitlines()
+    header=next((line for line in lines if all(p in normal(line) for p in PLANTS[:7])),None)
+    if not header:raise ValueError('歷史工廠表頭不完整')
+    plants=PLANTS if '東京湾岸' in normal(header) else PLANTS[:7]
+    positions=[]
+    for plant in plants:
+        match=re.search(r'\s*'.join(map(re.escape,plant)),header)
+        if not match:raise ValueError('歷史表頭工廠無法定位')
+        positions.append((match.start()+match.end())/2)
+    if positions!=sorted(positions) or any(b-a<7 for a,b in zip(positions,positions[1:])):raise ValueError('歷史表頭欄位順序或間距不符')
+    def column(start,end):
+        center=(start+end)/2
+        i=min(range(len(plants)),key=lambda j:abs(positions[j]-center))
+        if abs(positions[i]-center)>5:raise ValueError('歷史欄位無法可靠對齊')
+        return i
+    suspended=set()
+    for line in lines:
+        for match in re.finditer('休止中',line):suspended.add(column(match.start(),match.end()))
+    active=set(range(len(plants)))-suspended
+    result={}
+    shipping=[set() for _ in plants]
+    for line in lines:
+        for match in re.finditer(r'[海陸]\s*上',line):shipping[column(match.start(),match.end())].add(normal(match[0]))
+        prices=list(re.finditer(r'(?<!\d)\d{1,3},\d{3}(?!\d)',line))
+        if not prices:continue
+        grade=normal(line[:prices[0].start()])
+        if grade not in GRADES:continue
+        if grade in result:raise ValueError('歷史同品級重複')
+        values={}
+        for match in prices:
+            index=column(match.start(),match.end())
+            if index in values:raise ValueError('歷史價格同欄重複')
+            value=int(match[0].replace(',',''))
+            if not 1000<=value<=1000000:raise ValueError('歷史價格範圍無效')
+            values[index]=value
+        if set(values)!=active:raise ValueError('歷史重要品級缺值但未明示休止，拒絕補值／移欄')
+        result[grade]=values
+    if set(result)!=set(GRADES):raise ValueError('歷史重要品級不完整')
+    if shipping!=[{'海上','陸上'} if i in (0,2,5) else {'陸上'} for i in range(len(plants))]:raise ValueError('歷史海陸欄位不符')
+    return {'issued_date':issued,'quote_date':effective,
+            'prices':[(plants[i],grade,DELIVERY[i],result[grade][i]) for grade in GRADES for i in sorted(active)]}
 
 
 def state():
@@ -124,7 +181,7 @@ def save_state(value):
     with market.connection() as c:c.execute("INSERT INTO market_settings(name,value) VALUES('japan_tokyo_status',?) ON CONFLICT(name) DO UPDATE SET value=excluded.value",(json.dumps(value,ensure_ascii=False),))
 
 
-def sync(force=False):
+def sync(force=False,history_year=None):
     if not LOCK.acquire(False):raise HTTPException(409,'日本官方來源正在更新')
     import global_market as gm
     before=state();stamp=gm.now();result={**before,'checked_at':stamp,'error':None,'new_versions':0,'parsed_observations':0,'files':[],'failures':[]}
@@ -137,6 +194,9 @@ def sync(force=False):
         done={s.split('|')[1] for s in origins}
         # Latest PDF is checked for revisions; at most 12 public tables per daily run.
         selected=listed[:1]+[(d,u) for d,u in listed[1:] if u not in done][:11]
+        if history_year is not None:
+            selected=sorted((d,u) for d,u in listed if d.startswith(str(history_year)+'-') and u not in done)[:12]
+            if not selected:return {'ok':True,'message':f'官方索引中{history_year}年已無尚未保存的價格表；未猜測其他網址。','skipped':True}
         added=0;parsed_count=0;errors=[];files=[]
         for day,url in selected:
             try:
@@ -152,7 +212,8 @@ def sync(force=False):
             except Exception as exc:errors.append({'url':url,'reason':type(exc).__name__+': '+str(exc)[:200]})
         if not files:raise ValueError('所有價格表解析失敗：'+json.dumps(errors,ensure_ascii=False)[:400])
         with market.connection() as c:summary=c.execute("SELECT COUNT(*),MIN(quote_date),MAX(quote_date),COUNT(DISTINCT series_id) FROM global_quotes WHERE market='jp_tokyo' AND data_status='automatic'").fetchone()
-        result.update(success_at=gm.now(),latest_date=summary[2],first_date=summary[1],stored_versions=summary[0],series=summary[3],new_versions=added,parsed_observations=parsed_count,files=files,failures=errors,error='部分PDF未取得／格式不符；成功歷史保留' if errors else None)
+        with market.connection() as c:complete={r[0].split('|')[1] for r in c.execute("SELECT origin FROM global_quotes WHERE origin LIKE 'tokyo|%'")}
+        result.update(success_at=gm.now(),latest_date=summary[2],first_date=summary[1],stored_versions=summary[0],series=summary[3],new_versions=added,parsed_observations=parsed_count,files=files,failures=errors,index_files=len(listed),remaining_files=sum(u not in complete for _,u in listed),archive_year=history_year,error='部分PDF未取得／格式不符；成功歷史保留' if errors else None)
         save_state(result)
         return {'ok':not errors,'message':f'日本官方表：解析{parsed_count}筆，追加{added}筆版本；已保存{summary[1]}至{summary[2]}，不是即時行情。','status':result}
     except Exception as exc:
@@ -170,6 +231,11 @@ def status():
 def update():return sync(True)
 
 
+@router.post('/history')
+def history(year:int=Query(2025,ge=2025,le=datetime.now().year)):
+    return sync(True,year)
+
+
 def validate(c):
     row=c.execute("SELECT value FROM market_settings WHERE name='japan_tokyo_status'").fetchone()
     if not row:return
@@ -183,4 +249,4 @@ def validate(c):
     for entry in data.get('files',[]):
         if not re.fullmatch(re.escape(PREFIX)+r'\d{4}/\d{4}\.\d{2}\.\d{2}\.pdf',entry['url']):raise ValueError('日本來源網址不符')
         date.fromisoformat(entry['date'])
-        if entry['observations']!=64:raise ValueError('日本來源筆數不符')
+        if entry['observations'] not in (48,56,64):raise ValueError('日本來源筆數不符')
