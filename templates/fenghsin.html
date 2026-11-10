@@ -10,9 +10,9 @@
   <p id="fhValidation" class="notice"></p>
   <div id="fhStats" class="fh-stats"></div>
   <canvas id="fhChart" width="1100" height="350" role="img" aria-label="豐興絕對價格歷史折線圖" hidden></canvas>
-  <h3>公告調價（元／公噸）</h3><p class="muted">柱狀圖只使用明確公告的漲跌；平盤為0。缺少公告的日期不視為平盤。</p>
+  <details id="fhAnnouncements"><summary>公告紀錄與調價時間軸</summary><div id="fhTimeline"></div><details><summary>公告調價柱狀圖（元／公噸）</summary><p class="muted">柱狀圖只使用明確公告的漲跌；平盤為0。缺少公告的日期不視為平盤。</p>
   <p id="fhChangeStatus"></p><canvas id="fhChanges" width="1100" height="200" role="img" aria-label="豐興公告調價柱狀圖" hidden></canvas>
-  <h3>每週公告與來源</h3><p class="muted">點日期查看原始公告。直接報價、調價公告分開顯示；只有變動額時不顯示推測價格。</p>
-  <div class="scroll"><table><thead><tr><th>公告日期／原始來源</th><th>絕對價格</th><th>公告調價</th><th>資料類型與驗證</th><th>取得與口徑</th></tr></thead><tbody id="fhRows"></tbody></table></div>
+  </details><h3>原始資料與口徑</h3><p class="muted">點日期查看原始公告。直接報價、調價公告分開顯示；只有變動額時不顯示推測價格。</p>
+  <div class="scroll"><table><thead><tr><th>公告日期／原始來源</th><th>絕對價格</th><th>公告調價</th><th>資料類型與驗證</th><th>取得與口徑</th></tr></thead><tbody id="fhRows"></tbody></table></div></details>
 </div>
 <details class="panel"><summary>更新狀態、資料限制與回推檢查</summary><div id="fhSources"></div><p id="fhBackfill"></p><p>月均價與工程會鋼材參考價仍保留於進階資料管理，不併入豐興週盤。</p></details>

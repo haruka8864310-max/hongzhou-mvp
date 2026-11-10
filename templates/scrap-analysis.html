@@ -1,0 +1,13 @@
+<div id="scrapHomeHost"><div id="scrapPanel">
+<div class="panel">
+  <h2>豐興與國際市場比較</h2><p>預設豐興廢鋼與東京製鐵岡山工廠二級。原品級不是日本出口H2；只比較走勢，不計算可套利價差。</p>
+  <div class="formgrid"><label>搜尋已有資料的指標<input id="scrapSearch" type="search" placeholder="例如：東京、岡山、二級、BLS"></label><label>台灣／目標指標<select id="scrapA"></select></label><label>國際／領先指標<select id="scrapB"></select></label><label>比較方式<select id="scrapMode"><option value="index">共同週基期100</option><option value="native">原幣價格（雙軸）</option><option value="twd">台幣參考價格</option></select></label><label>期間<select id="scrapMonths"><option value="3">3個月</option><option value="6">6個月</option><option value="12" selected>1年</option><option value="36">3年</option><option value="0">全部歷史</option></select></label></div>
+  <details><summary>對齊與資料年齡設定</summary><label>最多沿用幾天前的觀察（不是補造日價）<input id="scrapAge" type="number" min="7" max="120" value="35"></label><label>查詢截至此時本機真正已取得的版本（留白為目前）<input id="scrapAsOf" type="datetime-local"></label></details>
+  <button id="scrapRun">更新比較</button><p id="scrapStatus" role="status">正在讀取真實SQLite資料…</p>
+  <div id="scrapSummary" class="grid"></div><p id="scrapLegend" class="notice"></p>
+  <canvas id="scrapChart" width="1100" height="360" role="img" aria-label="豐興與國際市場真實歷史比較" hidden></canvas>
+  <p id="scrapWarning" class="muted"></p><details><summary>每週對齊、資料年齡與原始來源</summary><div class="scroll"><table><thead><tr><th>對齊週末</th><th>A數值／報價日／年齡</th><th>B數值／報價日／年齡</th><th>來源與實際取得時間</th></tr></thead><tbody id="scrapAligned"></tbody></table></div></details>
+  <details><summary>缺值／匯率與來源衝突原因</summary><div id="scrapMissing"></div></details>
+</div>
+<div class="panel" id="scrapResearch"><h2>領先落後分析與1～4週研究</h2><p id="scrapResearchStatus">先完成兩個市場的走勢比較，再讀取研究結果。</p><button id="scrapResearchRun">分析目前兩個指標</button><div id="scrapLeading"></div><div id="scrapForecast"></div></div>
+</div></div>

@@ -20,6 +20,7 @@ import market_detail
 import global_market
 import japan_sources
 import fenghsin
+import scrap_analysis
 from fastapi.staticfiles import StaticFiles
 
 
@@ -58,6 +59,7 @@ app.include_router(market_detail.router)
 app.include_router(global_market.router)
 app.include_router(japan_sources.router)
 app.include_router(fenghsin.router)
+app.include_router(scrap_analysis.router)
 app.mount('/assets', StaticFiles(directory=Path(__file__).parent / 'assets'), name='assets')
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=['localhost', '127.0.0.1', '[::1]', 'testserver'])
 
@@ -286,6 +288,7 @@ def validate_database(path: Path):
                 japan_sources.validate(c)
             if version >= 6:
                 fenghsin.validate(c)
+                scrap_analysis.validate(c)
         for table, model in [('prices', Price), ('customers', Customer), ('trades', Trade)]:
             for row in c.execute(f'SELECT * FROM {table}'):
                 model(**dict(row))
@@ -361,8 +364,8 @@ def home():
     read=lambda name:(folder / 'templates' / name).read_text(encoding='utf-8')
     html=html.replace('<!--global-nav-->',read('global-nav.html'))
     decision=read('decision.html').replace('<!--steel-updates-->',read('steel-updates.html'))
-    html=html.replace('<!--decision-panel-->',read('fenghsin.html')+'<details class="panel"><summary>國際來源狀態與既有金屬摘要</summary>'+read('global-overview.html')+decision+'</details>')
-    html=html.replace('<!--global-compare-->',read('global-compare.html')).replace('<!--global-sources-->',read('global-source-panel.html'))
+    html=html.replace('<!--decision-panel-->',read('fenghsin.html')+read('scrap-analysis.html')+'<details class="panel"><summary>國際來源狀態與既有金屬摘要</summary>'+read('global-overview.html')+decision+'</details>')
+    html=html.replace('<!--global-compare-->','<div id="scrapCompareHost"></div><details class="panel"><summary>進階：既有同頻率比較</summary>'+read('global-compare.html')+'</details>').replace('<!--global-sources-->',read('global-source-panel.html'))
     metals=(folder / 'templates' / 'metals.html').read_text(encoding='utf-8')
     metals=metals.replace('<form id="metalSettings"',(folder / 'templates' / 'metal-controls.html').read_text(encoding='utf-8')+'<form id="metalSettings"')
     start=metals.index('>')+1;end=metals.index('</section>')
