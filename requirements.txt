@@ -5,3 +5,4 @@ pytest>=8.3,<10
 openpyxl==3.1.5
 certifi>=2024.8.30
 pypdf>=6.21.4,<7
+-r requirements-research.txt

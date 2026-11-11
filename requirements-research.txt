@@ -1,4 +1,4 @@
-# Optional research engine. Core localhost app remains usable without these.
+# Pinned research engine, included by requirements.txt and the Windows launcher.
 # skforecast: BSD-3-Clause; LightGBM: MIT. No NLP/news corpus dependencies.
 skforecast==0.26.0
 lightgbm==4.7.0

@@ -77,6 +77,12 @@ def feature_sources(data, chosen):
     return ids
 
 
+def observation_age_limit(series,default=35):
+    """Native publication cadence, not synthetic weekly/monthly interpolation."""
+    frequency=series.get('frequency') if series else None
+    return {'daily':7,'monthly':95,'annual':370}.get(frequency,default)
+
+
 def features(data, target_id, week, origin, sources, max_age):
     target=data.get(target_id)
     weeks=sa.week_rows(target) if target else {}
@@ -92,19 +98,20 @@ def features(data, target_id, week, origin, sources, max_age):
     for name,key in sources.items():
         series=data.get(key)
         points=series['points'] if series else []
-        current=sa.latest(points,origin.astimezone(sa.TZ).date().isoformat(),max_age,origin)
+        age_limit=observation_age_limit(series,max_age)
+        current=sa.latest(points,origin.astimezone(sa.TZ).date().isoformat(),age_limit,origin)
         values[name+'_missing']=int(current is None)
         values[name+'_age_days']=current['age_days'] if current else None
         stale_limit={'daily':7,'weekly':10,'monthly':95,'annual':370,'observed':35}.get(series.get('frequency') if series else None,35)
         values[name+'_stale']=int(current is None or current['age_days']>stale_limit)
         for lag in (1,2,4):
-            prior=sa.latest(points,(origin.astimezone(sa.TZ).date()-timedelta(weeks=lag)).isoformat(),max_age,origin)
+            prior=sa.latest(points,(origin.astimezone(sa.TZ).date()-timedelta(weeks=lag)).isoformat(),age_limit,origin)
             values[f'{name}_change_{lag}w']=current['price']/prior['price']-1 if current and prior else None
             if current and prior:known.extend([current['known_at'],prior['known_at']])
         for lag in (1,2,3,4):
             end=(origin.astimezone(sa.TZ).date()-timedelta(weeks=lag)).isoformat()
             start=(date.fromisoformat(end)-timedelta(days=7)).isoformat()
-            a,b=sa.latest(points,start,max_age,origin),sa.latest(points,end,max_age,origin)
+            a,b=sa.latest(points,start,age_limit,origin),sa.latest(points,end,age_limit,origin)
             values[f'{name}_return_lag_{lag}w']=b['price']/a['price']-1 if a and b else None
             if a and b:known.extend([a['known_at'],b['known_at']])
     if known and max(sa.timestamp(k) for k in known)>origin:
@@ -112,7 +119,7 @@ def features(data, target_id, week, origin, sources, max_age):
     return {'values':values,'base':base,'feature_known_at':max(known) if known else None}
 
 
-def training_rows(target_id, data, sources, max_age, as_of):
+def training_rows(target_id, data, sources, max_age, as_of,vintages=None):
     target=data[target_id]
     observed=sa.week_rows(target)
     rows={h:[] for h in (1,2,3,4)}
@@ -120,7 +127,7 @@ def training_rows(target_id, data, sources, max_age, as_of):
     for week in sorted(observed)[-156:]:
         origin=sa.endday(week_end(week))
         if origin>as_of:continue
-        vintage=sa.datasets(origin.isoformat())
+        vintage=vintages.get(week,{}) if vintages is not None else sa.datasets(origin.isoformat())
         feature=features(vintage,target_id,week,origin,sources,max_age)
         if not feature:continue
         for h in rows:
@@ -129,7 +136,8 @@ def training_rows(target_id, data, sources, max_age, as_of):
             rows[h].append({'week':week,'origin':origin.isoformat(),'features':feature['values'],
                 'feature_known_at':feature['feature_known_at'],'outcome_week':shift(week,h),
                 'outcome_known_at':outcome['known_at'],
-                'label':direction(feature['base']['price'],outcome['price'])})
+                'label':direction(feature['base']['price'],outcome['price']),
+                'previous_direction':direction(0,feature['values']['fh_change_1w'])})
     return rows
 
 
@@ -152,6 +160,34 @@ def classifier():
     from lightgbm import LGBMClassifier
     return LGBMClassifier(n_estimators=40,max_depth=3,num_leaves=7,learning_rate=.05,
         min_child_samples=5,random_state=2015,n_jobs=1,verbosity=-1,deterministic=True,force_col_wise=True)
+
+
+def classification_metrics(tests, key='prediction'):
+    """No score for zero tests; absent-class recall is unknown, never zero accuracy."""
+    n=len(tests)
+    matrix={actual:{pred:0 for pred in LABELS} for actual in LABELS}
+    for t in tests:
+        if t['actual'] not in LABELS or t[key] not in LABELS:
+            raise ValueError('分類標籤無效')
+        matrix[t['actual']][t[key]]+=1
+    support={label:sum(matrix[label].values()) for label in LABELS}
+    return {'samples':n,'accuracy':sum(matrix[k][k] for k in LABELS)/n if n else None,
+            'confusion_matrix':matrix if n else None,
+            'recall':{k:matrix[k][k]/support[k] if support[k] else None for k in LABELS},
+            'support':support}
+
+
+def baseline_backtest(rows):
+    tests=[]
+    for i,test in enumerate(rows):
+        past=[r for r in rows[:i] if sa.timestamp(r['outcome_known_at'])<=sa.timestamp(test['origin'])]
+        counts=Counter(r['label'] for r in past)
+        tests.append({'origin':test['origin'],'actual':test['label'],'flat':'flat',
+            'previous_direction':test.get('previous_direction',direction(0,test['features'].get('fh_change_1w') or 0)),
+            'majority':max(('flat','up','down'),key=lambda k:counts[k])})
+    return {'flat':classification_metrics(tests,'flat'),
+            'previous_direction':classification_metrics(tests,'previous_direction'),
+            'majority':classification_metrics(tests,'majority')}
 
 
 def walk_forward(rows,horizon):
@@ -179,6 +215,7 @@ def walk_forward(rows,horizon):
         majority=max(('flat','up','down'),key=lambda label:counts[label])
         tests.append({'origin':test['origin'],'outcome_week':test['outcome_week'],
             'actual':test['label'],'prediction':prediction,'majority':majority,'target_only':target_prediction,
+            'flat':'flat','previous_direction':test.get('previous_direction',direction(0,test['features'].get('fh_change_1w') or 0)),
             'train_samples':len(train),'latest_training_label_known_at':max(r['outcome_known_at'] for r in train),
             'feature_known_at':test['feature_known_at']})
     return tests
@@ -194,6 +231,9 @@ def forecast(target_id, data, sources, rows, horizon, max_age, now):
             'backtest_samples':0,'accuracy':None,'flat_accuracy':None,'majority_accuracy':None,
             'target_only_accuracy':None,'factors':[],'model_updated_at':None,'evaluated_at':now.isoformat(),
             'confidence':'尚無可靠預測','quality':{},'reason':'','tests':[],'confusion_matrix':None}
+    result.update(metrics=classification_metrics([]),baselines=baseline_backtest(rows),
+                  missing_training_samples=max(0,MIN_TRAIN-len(available)),missing_test_samples=MIN_TEST,
+                  missing_class_samples={k:max(0,MIN_CLASS-Counter(r['label'] for r in available)[k]) for k in LABELS})
     result['quality']={'target_observations':len(current_target['points']),
         'known_feature_origins':len(rows),'missing_sources':[k for k,v in sources.items() if not v or v not in data],
         'target_scope':current_target['scope'],'snapshot_is_not_historical_vintage':True}
@@ -216,13 +256,15 @@ def forecast(target_id, data, sources, rows, horizon, max_age, now):
         target_only_accuracy=sum(t['target_only']==t['actual'] for t in tests)/n if n else None,
         confusion_matrix={actual:{pred:sum(t['actual']==actual and t['prediction']==pred for t in tests) for pred in LABELS} for actual in LABELS},
         paired_p=paired_p(tests))
+    result.update(metrics=classification_metrics(tests),missing_test_samples=max(0,MIN_TEST-n),
+                  matched_baselines={k:classification_metrics(tests,k) for k in ('flat','previous_direction','majority','target_only')})
     counts=Counter(r['label'] for r in available)
     if n<MIN_TEST or any(counts[label]<MIN_CLASS for label in LABELS):
         result['reason']=f'具時間順序驗證的回測只有{n}筆，或上漲／平盤／下跌類別不足各{MIN_CLASS}筆；不輸出機率。'
         return result
     # Paired significance uses a four-horizon Bonferroni threshold; descriptive
     # correlations cannot meet this gate. No tuned-on-test hyperparameters.
-    if result['accuracy']<=max(result['flat_accuracy'],result['majority_accuracy'],result['target_only_accuracy'])+.05 or result['paired_p']>=.0125:
+    if result['accuracy']<=max(result['flat_accuracy'],result['majority_accuracy'],result['target_only_accuracy'],result['matched_baselines']['previous_direction']['accuracy'])+.05 or result['paired_p']>=.0125:
         result['reason']='時間順序回測尚未同時超過平盤、多數類別與僅豐興特徵基準至少5個百分點，或成對檢定不足（四期間門檻0.0125）；尚無可靠預測。'
         return result
     if current['values'].get('international_missing') or current['values'].get('international_stale') or (now.astimezone(sa.TZ).date()-date.fromisoformat(current['base']['date'])).days>10:
@@ -245,10 +287,9 @@ def research(a='',b='',months=12,max_age_days=35,as_of=None):
     if not LOCK.acquire(False):raise HTTPException(409,'研究正在執行，請稍候')
     try:
         sa.Preferences(months=months,max_age_days=max_age_days)
-        now=sa.timestamp(as_of) if as_of else sa.clock()
-        data=sa.datasets(now.isoformat())
-        defaults=sa.catalog(now.isoformat())['defaults']
-        a,b=a or defaults['a'],b or defaults['b']
+        from weekly_research import prepare
+        context=prepare(as_of,max_age_days,a,b)
+        now,data,a,b=context['now'],context['data'],context['target_id'],context['chosen']
         if a not in data or b not in data:raise HTTPException(422,'缺少豐興或所選國際指標')
         target=data[a]
         if target['market']!='tw_scrap' or target['origin']!='fenghsin_facts':
@@ -256,9 +297,9 @@ def research(a='',b='',months=12,max_age_days=35,as_of=None):
         visible_target={**target,'points':[p for p in target['points'] if not months or p['date']>=(now.astimezone(sa.TZ).date()-timedelta(days=round(months*30.4375))).isoformat()]}
         if not visible_target['points']:raise HTTPException(422,'所選期間無豐興價格')
         sources=feature_sources(data,b)
-        training=training_rows(a,data,sources,max_age_days,now)
+        training=training_rows(a,data,sources,max_age_days,now,context['vintages'])
         forecasts=[forecast(a,data,sources,training[h],h,max_age_days,now) for h in (1,2,3,4)]
         return {'leading':leading(visible_target,data[b],max_age_days),'forecasts':forecasts,'engine':engine_status(),
-            'as_of':now.isoformat(),'feature_sources':sources,
+            'as_of':now.isoformat(),'feature_sources':sources,'weekly_data':context['summary'],
             'message':'領先表依所選期間作事後歷史快照描述；模型另取最近最多156個目標週，且只用各預測時點已取得版本，兩者樣本數不同。未以相關係數代替預測勝率；1～4週代表相對本期價的累計方向，平盤指完全相同價格。'}
     finally:LOCK.release()

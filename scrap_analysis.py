@@ -51,7 +51,7 @@ def point(row, day, price, key, source_url=None):
     known = max(acquired, published or acquired)
     return {'id': key, 'date': period_end(day), 'quote_date': day, 'price': price,
             'source': row.get('source', ''), 'source_url': source_url or row['source_url'],
-            'published_at': row.get('published_at'), 'known_at': known.isoformat(),
+            'published_at': row.get('published_at'), 'published_date': row.get('published_date'), 'known_at': known.isoformat(),
             'first_seen_at': row.get('first_seen_at') or row['retrieved_at'], 'retrieved_at': row['retrieved_at']}
 
 
@@ -273,9 +273,12 @@ def validate(c):
 
 
 @router.get('/research')
+@router.get('/predict')
 def research(a:str='',b:str='',months:int=12,max_age_days:int=35,as_of:str|None=None):
     import scrap_forecast
     try:
         return scrap_forecast.research(a,b,months,max_age_days,as_of)
     except ValidationError as exc:
         raise HTTPException(422, '研究期間或資料年齡門檻無效') from exc
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
