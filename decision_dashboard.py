@@ -9,6 +9,27 @@ router=APIRouter(prefix='/api/dashboard')
 LOCK=threading.Lock()
 
 
+@router.get('/chart')
+def chart_data():
+    """Only populated, fixed-scope originals; no daily resampling or forward fill."""
+    data=sa.datasets();defaults=sa.catalog()['defaults'];series=[]
+    for product,label in [('scrap','豐興廢鋼'),('rebar','豐興鋼筋'),('sections','豐興型鋼')]:
+        h=fenghsin.history(product,0)
+        if h['points']:
+            series.append({'id':'fh_'+product,'label':label,'currency':'TWD','unit':'公噸','frequency':'每週公告／原始日期',
+                           'max_gap_days':8,'points':h['points'],'note':'公開價格彙整；品級／稅別未詳，非即時成交價。'})
+    keys=[(defaults['b'],'日本東京製鐵岡山／二級','調價日',14),
+          (next((k for k,s in data.items() if s['market']=='bls_steel_scrap'),''),'美國廢鋼PPI','月度指數',45),
+          (next((k for k,s in data.items() if s['market']=='cn_rebar' and any(p['source_url'].startswith(china_sources.HOME) for p in s['points'])),''),'中國螺紋鋼 HRB400E Φ20mm','旬度統計',15)]
+    for key,label,frequency,gap in keys:
+        if key in data:
+            s=data[key]
+            series.append({'id':key,'label':label,'currency':s['currency'],'unit':s['unit'],
+                           'frequency':frequency,'max_gap_days':gap,'points':s['points'],'note':s['scope']})
+    return {'series':series,'as_of':sa.clock().isoformat(),'futures_status':
+            'AKShare技術測試成功，但新浪條款限制自動下載與站外展示；未取得適用授權，未接入或訓練。'}
+
+
 def market_item(series,label,frequency,max_age,status):
     points=series['points'];last=points[-1];prev=points[-2] if len(points)>1 else None
     age=(sa.clock().astimezone(sa.TZ).date()-date.fromisoformat(last['date'])).days

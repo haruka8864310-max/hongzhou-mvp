@@ -11,7 +11,7 @@ router=APIRouter(prefix='/api/news')
 LOCK=threading.Lock()
 HOME='https://www.tymetals.com.tw/news/'
 STEELNET='https://www.steelnet.com.tw/'
-CATEGORIES=['鋼廠調漲／調降','廢鋼進出口','國際需求','鋼材價格','原料成本','產能與停工','關稅與貿易政策']
+CATEGORIES=['鋼廠調漲／調降','廢鋼進出口','國際需求','鋼材價格','原料成本','產能與停工','關稅與貿易政策','豐興調價']
 
 
 def migrate(c):
@@ -28,6 +28,7 @@ def classify(title):
     countries=[label for label,words in [('台灣',('台灣','臺灣','豐興','中鋼')),('日本',('日本','東京製鐵')),('美國',('美國','美国')),('中國',('中國','中国','大陸')),('土耳其',('土耳其',))] if any(w in title for w in words)]
     products=[label for label,words in [('廢鋼',('廢鋼','废钢')),('鋼筋',('鋼筋','螺紋鋼','螺纹钢')),('型鋼',('型鋼',)),('鐵礦砂',('鐵礦','铁矿')),('焦煤',('焦煤','焦炭')),('熱軋鋼',('熱軋','热轧'))] if any(w in title for w in words)]
     categories=[]
+    if '豐興' in title and any(w in title for w in ('開盤','盤價','調漲','調降')):categories.append('豐興調價')
     rules=[('鋼廠調漲／調降',('調漲','調降','上調','下調')),('廢鋼進出口',('進口','出口','进口')),('國際需求',('需求','訂單','订单')),('鋼材價格',('盤價','開盤','鋼價','价格')),('原料成本',('鐵礦','铁矿','焦煤','成本')),('產能與停工',('停工','減產','减产','產能','产能')),('關稅與貿易政策',('關稅','关税','反傾銷','反倾销','貿易','贸易'))]
     for category,words in rules:
         if any(w in title for w in words):categories.append(category)
@@ -128,6 +129,9 @@ def listing():
         if r['source_url'] in seen:continue
         seen.add(r['source_url'])
         for field in ('countries','commodities','categories'):r[field]=json.loads(r[field])
+        # Recompute our event labels from already stored factual titles; no new
+        # article download and no mutation of original metadata versions.
+        r['categories']=classify(r['title'])['categories']
         items.append(r)
     return {'items':items,'status':state(),'categories':CATEGORIES}
 

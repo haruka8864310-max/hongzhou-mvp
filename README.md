@@ -1,5 +1,11 @@
 # 弘洲金屬市場情報與決策分析系統
 
+2026-11-11 本輪：以 GitHub main `592db84` 為基礎，首頁改為「廢鋼市場決策中心」，既有工具保留於 `/advanced`。首頁採本機供應的 TradingView Lightweight Charts **5.3.0**（附 Apache-2.0 LICENSE、NOTICE 與署名），可切換豐興廢鋼／鋼筋／型鋼、日本岡山二級、美國月度PPI、中國官方旬度鋼價；支援十字線提示、觸控、縮放及拖曳，長缺口斷線、不補價。375px 為單欄與底部導覽。PWA 僅提供安裝基本能力，不快取行情或公司資料；服務停止時不假裝可離線更新，也未開放手機遠端。
+
+AKShare **1.20.37** 已安裝，LightGBM **4.7.0** 與 skforecast **0.26.0** 沿用既有安裝。首次獨立實測 `futures_zh_daily_sina`：RB0 **4,279筆**（2009-03-27～2026-11-11）、I0 **3,176筆**（2013-10-18～2026-11-11）、HC0 **3,077筆**（2014-03-21～2026-11-11），均 HTTP200。**技術可取得不等於合法可整合**：[新浪使用條款](https://finance.sina.com.cn/roll/2021-05-12/doc-ikmxzfmm2033220.shtml)第2.5、2.7、6.1、10.1節限制未經許可的自動下載與站外展示；AKShare MIT只涵蓋程式。確認此限制後已停止進一步下載，未保存整份期貨歷史、未寫入正式庫、未訓練期貨模型，不能宣稱五關全部通過。`scripts/check_live_futures.py` 現在只顯示先前測試摘要並以退出碼2說明授權阻礙，取得適用的資料提供方書面許可後才可重新評估；不提供繞過開關。
+
+本輪驗證使用獨立SQLite複本；另以只讀瀏覽器驗證正式首頁。執行後端測試：`.venv\Scripts\python.exe -m pytest -q`；實際Edge／375px觸控驗證：設定 `HONGZHOU_DASHBOARD_URL=http://127.0.0.1:8765` 後執行 `node --test tests/interactive-browser.test.cjs`（需既有Edge及開發依賴 `pnpm install`）。來源診斷選配依賴為 `requirements-futures.txt`；一般啟動不重裝研究套件。測試截圖與來源摘要僅存 `.test-runs/`，不提交資料庫。
+
 2026-11-11：研究套件現已納入主安裝流程，新增可直接執行的`research_cli.py doctor / weekly / train / backtest / verify-engine`。正式資料命令已執行，保存可追溯週表；正式合格樣本仍不足，命令明確拒絕建立假模型或成績。首頁自動呼叫固定豐興目標的預測API，加入上一期方向基準、分類召回及歷史表現。完整指令、實際套件呼叫、資料筆數、退出碼與修改前後清單見 [可執行研究驗收](docs/RESEARCH_CLI_ACCEPTANCE.md)。以下為先前階段紀錄。
 
 最新：首頁與「市場分析」已可直接比較豐興廢鋼／東京製鐵岡山二級的真實SQLite走勢，支援原幣雙軸、台幣參考及共同週基期100、來源與資料年齡。東京正式庫已保存2025年39期＋2026年36期、共4,544筆，兩份特殊格式仍拒絕猜值。新增1～4週領先研究及skforecast／LightGBM嚴格時間順序流程；目前豐興僅21個歷史日期，當時可得訓練／回測樣本0，故明示「尚無可靠預測」，不輸出假機率。選配研究套件以 `python -m pip install -r requirements-research.txt` 安裝；未安裝仍可使用比較圖。操作、每階段驗收與限制見 [國際比較與預測交付](docs/SCRAP_ANALYSIS_DELIVERY.md)，未接入國家的具體原因見 [來源查核](docs/INTERNATIONAL_SCRAP_SOURCES.md)。

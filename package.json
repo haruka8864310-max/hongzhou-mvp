@@ -1,6 +1,11 @@
 {
   "name": "hongzhou-market-ui-tests",
   "private": true,
-  "scripts": {"test": "node --test tests/market-ui.test.cjs"},
-  "devDependencies": {"jsdom": "26.1.0"}
+  "scripts": {
+    "test": "node --test tests/market-ui.test.cjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.0",
+    "jsdom": "26.1.0"
+  }
 }

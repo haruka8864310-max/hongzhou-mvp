@@ -1,0 +1,3 @@
+# Optional source diagnostics only. Software MIT does not license provider data.
+# Keep separate from normal startup until a provider permits the intended reuse.
+akshare==1.20.37

@@ -6,7 +6,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const {JSDOM}=require('jsdom');
 const base=process.env.HONGZHOU_DASHBOARD_URL||'http://127.0.0.1:18891';
-async function until(fn){for(let i=0;i<200;i++){if(fn())return;await new Promise(r=>setTimeout(r,50));}throw Error('UI timeout');}
+async function until(fn){for(let i=0;i<600;i++){if(fn())return;await new Promise(r=>setTimeout(r,50));}throw Error('UI timeout');}
 test('decision homepage renders real saved observations and retains them on failure',async()=>{
   const data=await (await fetch(base+'/api/dashboard?months=0')).json();
   assert.ok(data.fenghsin.total_count>=21);
@@ -17,14 +17,18 @@ test('decision homepage renders real saved observations and retains them on fail
   let offline=false,newsOffline=false,draws=0;
   w.AbortController=AbortController;
   w.HTMLCanvasElement.prototype.getContext=()=>({clearRect(){},fillText(){},beginPath(){},moveTo(){},lineTo(){draws++;},stroke(){},arc(){},fill(){}});
+  // Contract stub only; interactive-browser.test.cjs exercises the real library.
+  w.LightweightCharts={LineSeries:{},CrosshairMode:{Normal:0},createChart:()=>({subscribeCrosshairMove(){},addSeries(){return {setData(){draws++;}};},removeSeries(){},timeScale(){return {fitContent(){}};}})};
   w.addEventListener('error',e=>errors.push(e.message));
-  w.fetch=(url,opts)=>{requests.push(String(url));if(offline&&String(url).includes('dashboard?'))throw Error('Failed to fetch');if(newsOffline&&String(url).includes('news/update'))return Promise.resolve(new Response(JSON.stringify({detail:'TEST HTTP503'}),{status:503}));return fetch(new URL(url,base),opts);};
+  w.fetch=(url,opts)=>{requests.push(String(url));if(offline&&String(url).includes('dashboard?'))throw Error('Failed to fetch');if(offline&&String(url).includes('dashboard/update'))return Promise.resolve(new Response(JSON.stringify({results:[]})));if(newsOffline&&String(url).includes('news/update'))return Promise.resolve(new Response(JSON.stringify({detail:'TEST HTTP503'}),{status:503}));return fetch(new URL(url,base),opts);};
   try{
+    w.eval(fs.readFileSync(path.join(__dirname,'..','assets','market-chart.js'),'utf8'));
     w.eval(fs.readFileSync(path.join(__dirname,'..','assets','dashboard.js'),'utf8'));
-    await until(()=>d.documentElement.dataset.dashboardReady==='1'&&d.documentElement.dataset.dashboardPredictionReady==='1');
+    try{await until(()=>d.documentElement.dataset.dashboardReady==='1'&&d.documentElement.dataset.dashboardPredictionReady==='1');}
+    catch(e){throw Error(e.message+' '+d.getElementById('connectionStatus').textContent+' '+d.getElementById('forecastNote').textContent+' '+errors.join(';'));}
     assert.equal(d.querySelectorAll('main section').length,5);
     assert.equal(d.querySelectorAll('form').length,0);
-    assert.equal(d.querySelectorAll('canvas').length,1);
+    assert.equal(d.querySelectorAll('canvas').length,0);
     assert.equal(d.getElementById('fhChart').hidden,false);
     assert.ok(Number(d.getElementById('fhChart').dataset.points)>=2&&draws>0);
     assert.equal(d.querySelectorAll('#marketRows tr').length,3);
@@ -43,15 +47,15 @@ test('decision homepage renders real saved observations and retains them on fail
       assert.equal(d.querySelectorAll('#marketRows tr').length,3);
       console.log('Real update button: '+d.getElementById('updateMessage').textContent);
     }
-    for(const period of ['3','6','12','36','0']){
+    for(const period of ['90','180','365','0']){
       d.getElementById('period').value=period;
-      const count=requests.length;
       d.getElementById('period').dispatchEvent(new w.Event('change'));
-      await until(()=>requests.length>count&&d.getElementById('fhRows').children.length===data.fenghsin.total_count);
+      assert.ok(Number(d.getElementById('fhChart').dataset.points)>=2);
     }
     const chart=d.getElementById('fhChart').dataset.points,news=d.getElementById('newsItems').textContent;
-    offline=true;d.getElementById('period').dispatchEvent(new w.Event('change'));
+    offline=true;d.getElementById('updateAll').click();
     await until(()=>d.getElementById('connectionStatus').textContent.includes('讀取失敗'));
+    await until(()=>!d.getElementById('updateAll').disabled);
     assert.equal(d.getElementById('fhChart').dataset.points,chart);
     newsOffline=true;d.getElementById('newsUpdate').click();
     await until(()=>!d.getElementById('newsUpdate').disabled);

@@ -70,12 +70,18 @@ app.mount('/assets', StaticFiles(directory=Path(__file__).parent / 'assets'), na
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=['localhost', '127.0.0.1', '[::1]', 'testserver'])
 
 
+@app.get('/sw.js', include_in_schema=False)
+def service_worker():
+    return FileResponse(Path(__file__).parent/'assets'/'sw.js',media_type='application/javascript',
+                        headers={'Service-Worker-Allowed':'/'})
+
+
 @app.get('/api/health')
 def health():
     with connect() as c:
         c.execute('SELECT id FROM market_quotes LIMIT 1').fetchone()
         version = c.execute('SELECT MAX(version) FROM schema_migrations').fetchone()[0]
-    return {'app':'hongzhou-metal-market','ui_contract':'decision-dashboard-1','database':'ok','schema_version':version,'data_directory':str(ROOT.resolve())}
+    return {'app':'hongzhou-metal-market','ui_contract':'decision-interactive-1','database':'ok','schema_version':version,'data_directory':str(ROOT.resolve())}
 
 
 @app.get('/market.html', include_in_schema=False)
