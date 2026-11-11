@@ -24,6 +24,7 @@ import scrap_analysis
 import china_sources
 import news_sources
 import decision_dashboard
+import prediction_lab
 from fastapi.staticfiles import StaticFiles
 
 
@@ -66,8 +67,14 @@ app.include_router(scrap_analysis.router)
 app.include_router(china_sources.router)
 app.include_router(news_sources.router)
 app.include_router(decision_dashboard.router)
+app.include_router(prediction_lab.router)
 app.mount('/assets', StaticFiles(directory=Path(__file__).parent / 'assets'), name='assets')
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=['localhost', '127.0.0.1', '[::1]', 'testserver'])
+
+
+@app.get('/prediction-lab',response_class=HTMLResponse)
+def prediction_laboratory():
+    return (Path(__file__).parent/'templates'/'prediction-lab.html').read_text(encoding='utf-8')
 
 
 @app.get('/sw.js', include_in_schema=False)
@@ -81,7 +88,7 @@ def health():
     with connect() as c:
         c.execute('SELECT id FROM market_quotes LIMIT 1').fetchone()
         version = c.execute('SELECT MAX(version) FROM schema_migrations').fetchone()[0]
-    return {'app':'hongzhou-metal-market','ui_contract':'decision-interactive-1','database':'ok','schema_version':version,'data_directory':str(ROOT.resolve())}
+    return {'app':'hongzhou-metal-market','ui_contract':'decision-lab-1','database':'ok','schema_version':version,'data_directory':str(ROOT.resolve())}
 
 
 @app.get('/market.html', include_in_schema=False)

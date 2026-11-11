@@ -1,5 +1,11 @@
 # 弘洲金屬市場情報與決策分析系統
 
+2026-11-11 本輪兩項修復：首頁圖表的商品、最新價、日期、單位及來源共用同一選擇；一筆報價顯示單點，零筆可一鍵查看全部歷史，一年不要求滿一年資料。首頁「預測實驗室」連至 `/prediction-lab`，選合成測試／真實行情、商品及1～4個原生觀察期後，依序按「訓練模型」「執行預測」。頁面列出模型版本、訓練期間、三折時間順序回測、兩種基準、召回率與混淆矩陣。測試模式的所有結果均明示合成資料、未校準分數，不能作市場預測。
+
+可直接執行 `.venv\Scripts\python.exe prediction_lab.py demo --instrument demo_scrap --horizon 2`，一次看到訓練及重新載入模型的推論JSON；也可分開執行 `prediction_lab.py train --mode test --instrument demo_scrap --horizon 2`、再以回傳識別碼執行 `prediction_lab.py predict --mode test --run-id 識別碼`。模型存於固定資料目錄 `research/prediction-lab/test` 或 `real`，不寫入行情SQLite。真實模式提供既有豐興、日本、World Bank及BLS；歷史原生價格很多仍不代表具有當時已知版本，合格樣本不足會說明缺少筆數，測試模式不受影響。
+
+實際參考上游MIT版本 `a0b43ef2f56c469a192d2bbf0803d32ddc3f7d31` 的 `classical_baselines.py::struct_window`、`prep_data.py::build_samples/temporal_split` 及擴展視窗方法，適配為 `lab_features.py` 與 `prediction_lab.py`：六筆向後特徵、三方向±0.25%平盤帶、發布時間檢查及跨測試邊界標籤剔除；不使用原專案未提供／不可再散布的付費新聞資料，也不採用其向未來尋值與bfill。原MIT版權聲明保留於 `third_party/scrap_prediction/LICENSE`。未安裝新模型套件。
+
 2026-11-11 本輪：以 GitHub main `592db84` 為基礎，首頁改為「廢鋼市場決策中心」，既有工具保留於 `/advanced`。首頁採本機供應的 TradingView Lightweight Charts **5.3.0**（附 Apache-2.0 LICENSE、NOTICE 與署名），可切換豐興廢鋼／鋼筋／型鋼、日本岡山二級、美國月度PPI、中國官方旬度鋼價；支援十字線提示、觸控、縮放及拖曳，長缺口斷線、不補價。375px 為單欄與底部導覽。PWA 僅提供安裝基本能力，不快取行情或公司資料；服務停止時不假裝可離線更新，也未開放手機遠端。
 
 AKShare **1.20.37** 已安裝，LightGBM **4.7.0** 與 skforecast **0.26.0** 沿用既有安裝。首次獨立實測 `futures_zh_daily_sina`：RB0 **4,279筆**（2009-03-27～2026-11-11）、I0 **3,176筆**（2013-10-18～2026-11-11）、HC0 **3,077筆**（2014-03-21～2026-11-11），均 HTTP200。**技術可取得不等於合法可整合**：[新浪使用條款](https://finance.sina.com.cn/roll/2021-05-12/doc-ikmxzfmm2033220.shtml)第2.5、2.7、6.1、10.1節限制未經許可的自動下載與站外展示；AKShare MIT只涵蓋程式。確認此限制後已停止進一步下載，未保存整份期貨歷史、未寫入正式庫、未訓練期貨模型，不能宣稱五關全部通過。`scripts/check_live_futures.py` 現在只顯示先前測試摘要並以退出碼2說明授權阻礙，取得適用的資料提供方書面許可後才可重新評估；不提供繞過開關。
