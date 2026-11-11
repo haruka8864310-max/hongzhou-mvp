@@ -1,5 +1,11 @@
 # 弘洲金屬市場情報與決策分析系統
 
+2026-11-12：現有 `/prediction-lab` 新增「跨市場預測」及A／B／C特徵比較、逐筆預測日期／實際結果、領先1～4週描述與來源缺值稽核。官方NBS原始公告回放與原本嚴格的本機取得時間模式分開；僅有原始公告標題與公布時間的數值可依公布時間回放，首次取得／匯入時間保持真實，不把BLS／Fed今日快照回填過去。公告回放仍假設官方存檔未被回溯修改，不是當年實盤績效。跨缺期標籤不進回測，不混合Φ16–25mm與Φ20mm，也不把旬度鋼材價格標為RB／HC期貨。
+
+可重複匯入：`python cross_history.py nbs`、`python cross_history.py fed`、`python cross_history.py bls`（使用 `.venv` Python，預設正式固定資料目錄；驗證用 `HONGZHOU_DATA_DIR` 指向獨立資料夾）。NBS使用官網宣告分頁，快取索引、限量節流、去重及保留錯誤；Fed只存數值／ND統計；BLS以免金鑰的兩個十年區間補回1997～2016月指數。回測命令：`python prediction_lab.py train --mode cross --instrument cn_release --horizon 1`，目標是中國官方旬度公布價，**不是豐興**。豐興目標為 `fh_friday`，台北週五23:59:59截止，晚於該時刻公布的美國資料不得使用；歷史不足不產生機率。
+
+來源限制：豐興官網robots為 `Disallow: /`，中央社robots明示 `ai-train=no`，未建立其批次訓練連接器；日本H2／美國貨櫃報價未取得適用歷史再利用條件；東京製鐵只沿用官方原品級；中國RB／HC／I期貨的新浪資料授權阻礙未解除。這些缺口不以BLS指數、旬均鋼價或合成資料取代。正式資料追加前必須備份，`cross_history.apply_verified` 僅追加已驗證的官方行情，不替換DB或複製公司資料表。
+
 2026-11-11 本輪兩項修復：首頁圖表的商品、最新價、日期、單位及來源共用同一選擇；一筆報價顯示單點，零筆可一鍵查看全部歷史，一年不要求滿一年資料。首頁「預測實驗室」連至 `/prediction-lab`，選合成測試／真實行情、商品及1～4個原生觀察期後，依序按「訓練模型」「執行預測」。頁面列出模型版本、訓練期間、三折時間順序回測、兩種基準、召回率與混淆矩陣。測試模式的所有結果均明示合成資料、未校準分數，不能作市場預測。
 
 可直接執行 `.venv\Scripts\python.exe prediction_lab.py demo --instrument demo_scrap --horizon 2`，一次看到訓練及重新載入模型的推論JSON；也可分開執行 `prediction_lab.py train --mode test --instrument demo_scrap --horizon 2`、再以回傳識別碼執行 `prediction_lab.py predict --mode test --run-id 識別碼`。模型存於固定資料目錄 `research/prediction-lab/test` 或 `real`，不寫入行情SQLite。真實模式提供既有豐興、日本、World Bank及BLS；歷史原生價格很多仍不代表具有當時已知版本，合格樣本不足會說明缺少筆數，測試模式不受影響。

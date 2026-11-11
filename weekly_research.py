@@ -10,6 +10,17 @@ import scrap_analysis as sa
 APPLICATION_ID=0x485A5752
 
 
+def friday_cutoff(target_monday):
+    """Taipei Friday 23:59:59 before an actual Monday quote.
+
+    U.S. Friday closing data are NOT yet public at this cutoff; publication
+    timestamps, not matching calendar dates, control whether they can enter.
+    """
+    day=date.fromisoformat(target_monday)
+    if day.weekday()!=0:raise ValueError('目標必須為星期一，未把假日後報價當作週一')
+    return sa.endday((day-timedelta(days=3)).isoformat())
+
+
 def prepare(as_of=None,max_age_days=35,target_id=None,chosen=None):
     import scrap_forecast as sf
     now=sa.timestamp(as_of) if as_of else sa.clock()

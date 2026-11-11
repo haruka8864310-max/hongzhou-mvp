@@ -234,7 +234,8 @@ def store(provider,parsed,modified):
                 if old and math.isclose(old['value'],value,rel_tol=1e-12) and old['notes']==note:continue
                 revisions+=bool(old)
                 c.execute('INSERT INTO metal_observations(series_id,period,value,retrieved_at,source_updated,notes) VALUES(?,?,?,?,?,?)',(meta['id'],period,value,now,modified,note));count+=1
-        latest=max(period for _,values in parsed for period,_,_ in values)
+        # Historical backfills must not downgrade the existing provider status.
+        latest=c.execute('SELECT MAX(o.period) FROM metal_observations o JOIN metal_series s ON s.id=o.series_id WHERE s.provider=?',(provider,)).fetchone()[0]
         c.execute('''INSERT INTO metal_updates(provider,checked_at,success_at,latest_period,error,imported,source_url,source_updated)
           VALUES(?,?,?,?,NULL,?,?,?) ON CONFLICT(provider) DO UPDATE SET checked_at=excluded.checked_at,success_at=excluded.success_at,
           latest_period=excluded.latest_period,error=NULL,imported=excluded.imported,source_url=excluded.source_url,source_updated=excluded.source_updated''',

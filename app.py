@@ -88,7 +88,7 @@ def health():
     with connect() as c:
         c.execute('SELECT id FROM market_quotes LIMIT 1').fetchone()
         version = c.execute('SELECT MAX(version) FROM schema_migrations').fetchone()[0]
-    return {'app':'hongzhou-metal-market','ui_contract':'decision-lab-1','database':'ok','schema_version':version,'data_directory':str(ROOT.resolve())}
+    return {'app':'hongzhou-metal-market','ui_contract':'decision-cross-1','database':'ok','schema_version':version,'data_directory':str(ROOT.resolve())}
 
 
 @app.get('/market.html', include_in_schema=False)
@@ -322,7 +322,7 @@ def validate_database(path: Path):
 
 def restore_database(backup_file: str | Path, target_root: Path | None = None) -> Path:
     # Same lock order as source updates: finish any in-flight download before restore.
-    with market_sources.UPDATE_LOCK, metal_engine.LOCK, japan_sources.LOCK, fenghsin.LOCK, china_sources.LOCK, news_sources.LOCK:
+    with market_sources.UPDATE_LOCK, metal_engine.LOCK, japan_sources.LOCK, fenghsin.LOCK, china_sources.LOCK, news_sources.LOCK, prediction_lab.LOCK:
         with DB_LOCK:
             return _restore_database(backup_file, target_root)
 

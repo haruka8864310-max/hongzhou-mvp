@@ -10,7 +10,7 @@ from pathlib import Path
 from fastapi import APIRouter,HTTPException
 from pydantic import BaseModel,Field,ConfigDict
 import scrap_analysis as sa
-from lab_features import LOOKBACK,FEATURES,struct_window,direction
+from lab_features import LOOKBACK,FEATURES,struct_window,direction,available_points
 
 router=APIRouter(prefix='/api/prediction-lab')
 LOCK=threading.Lock()
@@ -23,7 +23,7 @@ REFERENCE_REV='a0b43ef2f56c469a192d2bbf0803d32ddc3f7d31'
 
 def folder(mode):
     import app
-    if mode not in ('test','real'):raise ValueError('模式必須為test或real')
+    if mode not in ('test','real','cross'):raise ValueError('模式必須為test、real或cross')
     return app.ROOT/'research'/'prediction-lab'/mode
 
 
@@ -36,10 +36,15 @@ def real_series():
 @router.get('/catalog')
 def catalog():
     real=real_series()
+    import cross_research
+    src=cross_research.sources()
     return {'test':[{'id':key,'name':name+'（合成測試）','count':320,'frequency':'每週合成觀察'} for key,name in
                     [('demo_scrap','測試廢鋼'),('demo_rebar','測試鋼筋'),('demo_copper','測試銅')]],
             'real':[{'id':k,'name':s['name']+'／'+s['scope'],'count':len(s['points']),
                      'frequency':s['frequency'],'first':s['points'][0]['quote_date'],'last':s['points'][-1]['quote_date']} for k,s in real.items()],
+            'cross':[{'id':'fh_friday','name':'豐興：星期五→後續星期一','count':len(src['target']['points']),'frequency':'1～4週'},
+                     {'id':'cn_release','name':'中國官方旬度鋼價（真實國際替代研究，非豐興）','count':len(available_points(src['china'],sa.clock())),'frequency':'1～4次旬度公告'}],
+            'cross_inventory':cross_research.cross_history.inventory(),
             'disclaimer':DISCLAIMER,'reference':REFERENCE,'horizon_note':'1～4個原生觀察期；測試資料為週，月指標為月，調價日資料為後續報價次數，不冒充交易日。'}
 
 
@@ -93,6 +98,9 @@ def train(mode='test',instrument='demo_scrap',horizon=1):
     if horizon not in (1,2,3,4):raise ValueError('預測期間須為1～4期')
     if not LOCK.acquire(False):raise HTTPException(409,'已有模型正在訓練，請稍候')
     try:
+        if mode=='cross':
+            import cross_research
+            return cross_research.train(instrument,horizon)
         series=load(mode,instrument);data=rows(series,horizon,mode);n=len(data)
         minimum=120
         if n<minimum:
@@ -145,24 +153,28 @@ def predict(mode,run_id):
     if report['mode']!=mode:raise ValueError('模型與資料模式不一致')
     from lightgbm import Booster
     import numpy as np
-    probabilities=Booster(model_str=(path/'model.txt').read_text(encoding='utf-8')).predict(np.array([report['latest_features']]))[0]
+    raw=Booster(model_str=(path/'model.txt').read_text(encoding='utf-8')).predict(np.array([report['latest_features']]))
+    classes=report.get('class_labels',[0,1,2])
+    if raw.ndim==1:
+        probabilities=np.array([1-float(raw[0]),float(raw[0])]);classes=report.get('class_labels',[0,1])
+    else:probabilities=raw[0]
     return {'mode':mode,'run_id':run_id,'model_version':report['model_version'],'instrument':report['instrument'],'name':report['name'],
-            'horizon':report['horizon'],'frequency':report['frequency'],'direction':LABELS[int(np.argmax(probabilities))],
+            'horizon':report['horizon'],'frequency':report['frequency'],'direction':LABELS[classes[int(np.argmax(probabilities))]],
             'probabilities':dict(zip(LABELS,probabilities.tolist())) if mode=='test' else None,
             'calibrated':False,'probability_notice':report['probability_notice'],'disclaimer':report['disclaimer'],
-            'as_of_quote_date':report['last_quote_date'],'model_updated_at':report['created_at']}
+            'as_of_quote_date':report['last_quote_date'],'forecast_origin':report.get('forecast_origin'),'model_updated_at':report['created_at']}
 
 
 class TrainInput(BaseModel):
     model_config=ConfigDict(extra='forbid')
-    mode:str=Field(pattern='^(test|real)$')
+    mode:str=Field(pattern='^(test|real|cross)$')
     instrument:str=Field(min_length=1,max_length=400)
     horizon:int=Field(ge=1,le=4)
 
 
 class PredictInput(BaseModel):
     model_config=ConfigDict(extra='forbid')
-    mode:str=Field(pattern='^(test|real)$')
+    mode:str=Field(pattern='^(test|real|cross)$')
     run_id:str=Field(pattern='^[a-f0-9]{32}$')
 
 
@@ -178,8 +190,23 @@ def predict_api(value:PredictInput):
     except ValueError as exc:raise HTTPException(422,str(exc)) from exc
 
 
+@router.post('/cross-import')
+def cross_import_api():
+    if not LOCK.acquire(False):raise HTTPException(409,'研究或匯入正在執行')
+    try:
+        import cross_history
+        return cross_history.import_nbs(max_files=40)
+    finally:LOCK.release()
+
+
+@router.get('/cross-inventory')
+def cross_inventory_api():
+    import cross_history
+    return cross_history.inventory()
+
+
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','train','predict']);parser.add_argument('--mode',choices=['test','real'],default='test');parser.add_argument('--instrument',default='demo_scrap');parser.add_argument('--horizon',type=int,choices=[1,2,3,4],default=1);parser.add_argument('--run-id')
+    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['demo','train','predict']);parser.add_argument('--mode',choices=['test','real','cross'],default='test');parser.add_argument('--instrument',default='demo_scrap');parser.add_argument('--horizon',type=int,choices=[1,2,3,4],default=1);parser.add_argument('--run-id')
     args=parser.parse_args()
     if args.command=='predict':result=predict(args.mode,args.run_id or '')
     else:

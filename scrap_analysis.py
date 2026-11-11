@@ -90,10 +90,24 @@ def datasets(as_of=None):
         if p['date'] > cutoff.astimezone(TZ).date().isoformat():
             continue
         key = 'g:' + r['series_id']
+        nbs=(r['origin'].startswith(('archive-nbs|','nbs|')) and r['source']=='中國國家統計局')
+        if nbs:
+            # A document URL is provenance, not a new economic instrument.
+            # Both fixed-scope NBS connectors parse the identical official
+            # specification; preserve each point's URL and acquisition clock.
+            identity=[r[k] for k in ('market','country','grade','currency','unit','frequency','source')]
+            key='nbs:'+hashlib.sha256(json.dumps(identity,ensure_ascii=False).encode()).hexdigest()[:24]
         s = result.setdefault(key, {'id': key, 'market': r['market'], 'country': r['country'],
             'name': r['instrument'], 'scope': r['grade']+'／'+r['delivery_term'],
             'currency': r['currency'], 'unit': r['unit'], 'frequency': r['frequency'],
             'origin': 'global_quotes', 'points': [], 'conflicts': []})
+        if nbs:
+            if p['date'] in s['conflicts']:continue
+            existing=next((q for q in s['points'] if q['date']==p['date']),None)
+            if existing:
+                if existing['price']!=p['price']:
+                    s['conflicts'].append(p['date']);s['points']=[q for q in s['points'] if q['date']!=p['date']]
+                continue
         s['points'].append(p)
     for r in monthly:
         key = 'm:' + r['series_id']

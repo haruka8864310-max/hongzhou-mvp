@@ -48,6 +48,17 @@ class Meta(HTMLParser):
 
 def parse(raw,url):
     html=raw.decode('utf-8-sig');meta=Meta();meta.feed(html)
+    # Older official templates expose original title/time only in the visible
+    # header, not meta tags. Accept a unique exact title and header timestamp;
+    # never use migration URL dates or infer a historical publication clock.
+    if not meta.values.get('ArticleTitle'):
+        from html import unescape
+        titles={re.sub(r'\s+','',unescape(re.sub('<[^>]+>','',x))) for x in re.findall(r'<h1[^>]*>(.*?)</h1>',html,re.S)}
+        titles={x for x in titles if TITLE.fullmatch(x)}
+        if len(titles)==1:meta.values['ArticleTitle']=titles.pop()
+    if not meta.values.get('PubDate'):
+        stamps=set(re.findall(r'''class=["']detail-title-des["'][\s\S]{0,500}?<p>\s*(\d{4}/\d{2}/\d{2} \d{2}:\d{2})\s*</p>''',html))
+        if len(stamps)==1:meta.values['PubDate']=stamps.pop()
     match=TITLE.fullmatch(re.sub(r'\s+','',meta.values.get('ArticleTitle','')))
     if not match:raise ValueError('不是指定生產資料旬度統計公告')
     y,m=int(match[1]),int(match[2]);part=match[3]
