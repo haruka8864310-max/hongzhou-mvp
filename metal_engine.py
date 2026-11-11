@@ -242,11 +242,12 @@ def store(provider,parsed,modified):
     return count,revisions
 
 
-def sync(force=True):
+def sync(force=True,providers=None):
     if not LOCK.acquire(False):raise HTTPException(409,'金屬資料正在更新')
     try:
         cfg=settings();results=[]
-        for provider in cfg.providers:
+        if providers is not None and any(p not in PROVIDERS for p in providers):raise HTTPException(400,'來源不合法')
+        for provider in (cfg.providers if providers is None else [p for p in providers if p in cfg.providers]):
             now=datetime.now(timezone.utc)
             with market.connection() as c:prior=c.execute('SELECT checked_at,error FROM metal_updates WHERE provider=?',(provider,)).fetchone()
             seconds=max(3600 if provider=='bls' else 60,60 if force else cfg.update_hours*3600)

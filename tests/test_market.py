@@ -40,7 +40,7 @@ def test_empty_dashboard_and_assets(client):
     for path in ['/', '/assets/market.js', '/assets/market.css', '/legacy']:
         assert client.get(path).status_code == 200
     for title in ['全球廢鋼市場總覽','國際市場比較','預測研究（需足量資料）','市場機會雷達','quoteform','csvform']:
-        assert title in client.get('/').text
+        assert title in client.get('/advanced').text
     assert len(client.get('/api/market/template').text.splitlines()) == 1
 
 

@@ -19,7 +19,7 @@ test('market frontend integrated with FastAPI',async t=>{
   let dom;
   try{
     await waitFor(async()=>{try{return (await fetch(base+'/api/market/catalog')).ok;}catch{return false;}},'server '+logs);
-    dom=new JSDOM(await (await fetch(base+'/')).text(),{url:base,runScripts:'outside-only',pretendToBeVisual:true});
+    dom=new JSDOM(await (await fetch(base+'/advanced')).text(),{url:base,runScripts:'outside-only',pretendToBeVisual:true});
     const w=dom.window,d=w.document;
     w.AbortController=AbortController;
     const errors=[];w.addEventListener('error',e=>errors.push(e.message));
@@ -88,7 +88,7 @@ test('market frontend integrated with FastAPI',async t=>{
       assert.deepEqual(errors,[]);
     });
     async function diagnosticWindow(url,handler,raw=false){
-      const instance=new JSDOM(raw?fs.readFileSync(path.join(root,'market.html'),'utf8'):await (await fetch(base+'/')).text(),{url,runScripts:'outside-only'});
+      const instance=new JSDOM(raw?fs.readFileSync(path.join(root,'market.html'),'utf8'):await (await fetch(base+'/advanced')).text(),{url,runScripts:'outside-only'});
       const win=instance.window;win.AbortController=AbortController;
       win.HTMLCanvasElement.prototype.getContext=()=>({clearRect(){},fillText(){},beginPath(){},moveTo(){},lineTo(){},stroke(){},arc(){},fill(){}});
       const consoleErrors=[];win.console.error=(...args)=>consoleErrors.push(args.map(String).join(' '));

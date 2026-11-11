@@ -21,6 +21,9 @@ import global_market
 import japan_sources
 import fenghsin
 import scrap_analysis
+import china_sources
+import news_sources
+import decision_dashboard
 from fastapi.staticfiles import StaticFiles
 
 
@@ -60,6 +63,9 @@ app.include_router(global_market.router)
 app.include_router(japan_sources.router)
 app.include_router(fenghsin.router)
 app.include_router(scrap_analysis.router)
+app.include_router(china_sources.router)
+app.include_router(news_sources.router)
+app.include_router(decision_dashboard.router)
 app.mount('/assets', StaticFiles(directory=Path(__file__).parent / 'assets'), name='assets')
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=['localhost', '127.0.0.1', '[::1]', 'testserver'])
 
@@ -69,7 +75,7 @@ def health():
     with connect() as c:
         c.execute('SELECT id FROM market_quotes LIMIT 1').fetchone()
         version = c.execute('SELECT MAX(version) FROM schema_migrations').fetchone()[0]
-    return {'app':'hongzhou-metal-market','ui_contract':'research-cli-2','database':'ok','schema_version':version,'data_directory':str(ROOT.resolve())}
+    return {'app':'hongzhou-metal-market','ui_contract':'decision-dashboard-1','database':'ok','schema_version':version,'data_directory':str(ROOT.resolve())}
 
 
 @app.get('/market.html', include_in_schema=False)
@@ -113,7 +119,7 @@ def setup_database():
             has_market = c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='market_quotes'").fetchone()
             has_versions = c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'").fetchone()
             version = c.execute('SELECT COALESCE(MAX(version),0) FROM schema_migrations').fetchone()[0] if has_versions else 0
-        if not has_market or version < 6:
+        if not has_market or version < 7:
             backup_database(as_zip=False)
     with connect() as c:
         c.execute(
@@ -163,6 +169,7 @@ def setup_database():
         metal_engine.migrate(c)
         global_market.migrate(c)
         fenghsin.migrate(c)
+        news_sources.migrate(c)
     global_market.capture_existing()
     return DB
 
@@ -255,7 +262,7 @@ def validate_database(path: Path):
             raise ValueError('備份客戶關聯無效')
         if c.execute("SELECT 1 FROM sqlite_master WHERE name='schema_migrations'").fetchone():
             version = c.execute('SELECT COALESCE(MAX(version),0) FROM schema_migrations').fetchone()[0]
-            if version > 6:
+            if version > 7:
                 raise ValueError('備份版本較新，請先升級程式')
             if version >= 2:
                 columns = {r['name'] for r in c.execute('PRAGMA table_info(market_quotes)')}
@@ -289,6 +296,8 @@ def validate_database(path: Path):
             if version >= 6:
                 fenghsin.validate(c)
                 scrap_analysis.validate(c)
+            if version >= 7:
+                news_sources.validate(c)
         for table, model in [('prices', Price), ('customers', Customer), ('trades', Trade)]:
             for row in c.execute(f'SELECT * FROM {table}'):
                 model(**dict(row))
@@ -300,7 +309,7 @@ def validate_database(path: Path):
 
 def restore_database(backup_file: str | Path, target_root: Path | None = None) -> Path:
     # Same lock order as source updates: finish any in-flight download before restore.
-    with market_sources.UPDATE_LOCK, metal_engine.LOCK, japan_sources.LOCK, fenghsin.LOCK:
+    with market_sources.UPDATE_LOCK, metal_engine.LOCK, japan_sources.LOCK, fenghsin.LOCK, china_sources.LOCK, news_sources.LOCK:
         with DB_LOCK:
             return _restore_database(backup_file, target_root)
 
@@ -357,6 +366,11 @@ def _restore_database(backup_file: str | Path, target_root: Path | None = None) 
 
 
 @app.get('/', response_class=HTMLResponse)
+def dashboard_home():
+    return (Path(__file__).parent/'templates'/'dashboard.html').read_text(encoding='utf-8')
+
+
+@app.get('/advanced', response_class=HTMLResponse)
 def home():
     folder = Path(__file__).parent
     html=(folder / 'market.html').read_text(encoding='utf-8')

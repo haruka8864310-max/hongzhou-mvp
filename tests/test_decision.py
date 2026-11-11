@@ -12,7 +12,7 @@ def test_briefing_countries_do_not_invent_prices(monkeypatch):
             assert result.status_code==200
             assert result.json()['items']==[]
         assert c.get('/api/metals/briefing?country=invalid').status_code==400
-        page=c.get('/').text
+        page=c.get('/advanced').text
         assert 'id="decisionCopper"' in page
         assert 'id="decisionActions"' in page
         assert 'data-country="jp"' in page

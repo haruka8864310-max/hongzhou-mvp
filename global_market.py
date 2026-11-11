@@ -182,6 +182,8 @@ def available(as_of=None):
             value['document_url']=value['origin'].split('|')[1]
             issued=re.search(r'公告日(\d{4}-\d{2}-\d{2})',value['license_note'])
             value['published_date']=issued[1] if issued else None
+        if value['origin'].startswith('nbs|'):
+            value['document_url']=value['origin'].split('|')[1]
         result[(row['series_id'],row['quote_date'])]=value
     return sorted(result.values(),key=lambda r:(r['quote_date'],r['id']))
 
@@ -193,12 +195,13 @@ def stale(row):
 
 
 def statuses():
+    import china_sources
     monthly={r['provider']:r for r in engine.status()};fx=market_sources.source_status()['sources']
     import japan_sources
     tokyo=japan_sources.state()
     result={}
     for item in CATALOG:
-        state=tokyo if item['provider']=='tokyo' else monthly.get(item['provider'],{}) if item['provider']!='fx' else next((r for r in fx if r['instrument']=='fx_usd'),{})
+        state=china_sources.state() if item['provider']=='nbs' else tokyo if item['provider']=='tokyo' else monthly.get(item['provider'],{}) if item['provider']!='fx' else next((r for r in fx if r['instrument']=='fx_usd'),{})
         imported='使用者檔案' in str(state.get('source_updated',''))
         reason=item['reason']
         if item['id'].startswith('pcc_') and state.get('latest_period'):reason='來源目前下載最新月份為'+state['latest_period']+'。'+reason

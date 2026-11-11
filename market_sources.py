@@ -285,6 +285,9 @@ def start_scheduler():
         while not stop.is_set():
             try:
                 if get_settings().auto_update:
+                    import china_sources,news_sources
+                    china_sources.sync(force=False)
+                    news_sources.sync(force=False)
                     import fenghsin
                     fenghsin.sync(force=False)
                     synchronize(force=False)

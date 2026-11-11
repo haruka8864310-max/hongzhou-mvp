@@ -18,7 +18,7 @@ def test_health_and_html_redirects_are_same_service():
             redirected=client.get(path)
             assert redirected.status_code==200
             assert redirected.url.path=='/'
-            assert 'settingsform' in redirected.text
+            assert 'updateAll' in redirected.text
 
 
 def test_launcher_rejects_wrong_service_or_data_directory(tmp_path,monkeypatch):

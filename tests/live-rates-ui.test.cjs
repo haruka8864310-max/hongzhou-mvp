@@ -11,7 +11,7 @@ test('real update button, reload persistence, history and empty research',{skip:
   assert.ok(['127.0.0.1','localhost'].includes(new URL(base).hostname));
   const requests=[],windows=[],consoleErrors=[];
   async function load(){
-    const dom=new JSDOM(await (await fetch(base)).text(),{url:base,runScripts:'outside-only',pretendToBeVisual:true});
+    const dom=new JSDOM(await (await fetch(base+'/advanced')).text(),{url:base,runScripts:'outside-only',pretendToBeVisual:true});
     const w=dom.window,d=w.document;windows.push(w);w.AbortController=AbortController;
     let lineSegments=0;
     w.HTMLCanvasElement.prototype.getContext=()=>({clearRect(){},fillText(){},beginPath(){},moveTo(){},lineTo(){lineSegments++;},stroke(){},arc(){},fill(){}});

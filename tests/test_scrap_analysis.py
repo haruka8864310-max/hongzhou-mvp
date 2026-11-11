@@ -31,10 +31,10 @@ def test_catalog_defaults_and_dual_native_curves(monkeypatch):
         assert len(r['curves']['a'])==len(r['curves']['b'])==2
         assert r['a']['currency']=='TWD' and r['b']['currency']=='JPY'
         assert all(p['source_url'] for p in r['curves']['b'])
-        assert 'scrapPanel' in c.get('/').text
+        assert 'scrapPanel' in c.get('/advanced').text
         # The page has unique FH center and legacy input IDs.
-        assert c.get('/').text.count('id="fhProduct"')==1
-        assert c.get('/').text.count('id="fhPeriod"')==1
+        assert c.get('/advanced').text.count('id="fhProduct"')==1
+        assert c.get('/advanced').text.count('id="fhPeriod"')==1
         summary=c.get('/api/scrap-analysis/summary').json()
         assert len(summary['items'])==1 and summary['items'][0]['name']=='東京製鐵廢鋼採購'
 

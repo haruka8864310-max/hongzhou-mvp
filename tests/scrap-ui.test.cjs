@@ -7,7 +7,7 @@ test('real Feng Hsin Tokyo curves, native/index/TWD, periods, source dates and f
  const initialCatalog=await(await fetch(base+'/api/scrap-analysis/catalog')).json();
  const oldNonScrap=initialCatalog.items.find(s=>s.market==='tw_sections');
  if(oldNonScrap)await fetch(base+'/api/scrap-analysis/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({a:oldNonScrap.id,b:initialCatalog.defaults.b,mode:'index',months:12,max_age_days:35})});
- const dom=new JSDOM(await(await fetch(base)).text(),{url:base,runScripts:'outside-only',pretendToBeVisual:true});
+ const dom=new JSDOM(await(await fetch(base+'/advanced')).text(),{url:base,runScripts:'outside-only',pretendToBeVisual:true});
  const w=dom.window,d=w.document,errors=[],apiCalls=[];let lines=0,pending=0,offline=false;
  w.AbortController=AbortController;w.addEventListener('error',e=>errors.push(e.message));w.console.error=(...a)=>errors.push(a.map(String).join(' '));
  w.HTMLCanvasElement.prototype.getContext=()=>({clearRect(){},fillText(){},beginPath(){},moveTo(){},lineTo(){lines++;},stroke(){},arc(){},fill(){},fillRect(){}});

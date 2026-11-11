@@ -4,7 +4,7 @@ const base=process.env.HONGZHOU_LIVE_UI_URL;
 async function wait(fn,label){for(let i=0;i<1000;i++){if(fn())return;await new Promise(r=>setTimeout(r,40));}throw Error('Timeout '+label);}
 test('global market real data, countries, version entry, history, compare and failure',{skip:!base},async()=>{
  assert.ok(['127.0.0.1','localhost'].includes(new URL(base).hostname));
- const dom=new JSDOM(await(await fetch(base)).text(),{url:base,runScripts:'outside-only',pretendToBeVisual:true});
+ const dom=new JSDOM(await(await fetch(base+'/advanced')).text(),{url:base,runScripts:'outside-only',pretendToBeVisual:true});
  const w=dom.window,d=w.document,errors=[];let segments=0,pending=0,offline=false;
  w.AbortController=AbortController;w.addEventListener('error',e=>errors.push(e.message));w.console.error=(...a)=>errors.push(a.map(String).join(' '));
  w.HTMLCanvasElement.prototype.getContext=()=>({clearRect(){},fillText(){},beginPath(){},moveTo(){},lineTo(){segments++;},stroke(){},arc(){},fill(){}});

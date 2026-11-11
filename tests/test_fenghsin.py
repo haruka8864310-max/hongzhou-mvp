@@ -45,7 +45,7 @@ def test_parse_strict_dates_columns_and_facts_only():
 def test_end_to_end_dedup_revisions_failure_persistence_backup(monkeypatch):
     network(monkeypatch)
     with TestClient(app.app) as c:
-        assert 'fhChart' in c.get('/').text
+        assert 'fhChart' in c.get('/advanced').text
         assert c.post('/api/fenghsin/sync').json()['ok']
         history = c.get('/api/fenghsin/history').json()
         assert history['stats']['count'] == 2 and history['stats']['change'] == 100
@@ -114,7 +114,7 @@ def test_reconstruction_stops_at_gaps_scope_conflict_or_missing_change():
 def test_v5_upgrade_backs_up_before_additive_tables():
     app.setup_database()
     with app.connect() as c:
-        c.execute('DELETE FROM schema_migrations WHERE version=6')
+        c.execute('DELETE FROM schema_migrations WHERE version>=6')
         c.execute('DROP TABLE fenghsin_facts')
         c.execute('DROP TABLE fenghsin_source_status')
         c.execute("INSERT INTO customers(name) VALUES('TEST preserved')")

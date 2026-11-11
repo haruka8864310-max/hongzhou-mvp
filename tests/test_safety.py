@@ -15,7 +15,7 @@ def client():
 def test_ui_and_customer_trade_flow(client):
     page = client.get('/')
     assert page.status_code == 200
-    assert 'compareform' in page.text
+    assert 'compareform' in client.get('/advanced').text
     assert 'restoreform' in client.get('/legacy').text
     assert client.post('/api/customers', json={'name': '測試專用'}).status_code == 200
     customer = client.get('/api/customers').json()[0]
@@ -83,4 +83,4 @@ def test_initialization_is_idempotent(client):
     app.setup_database()
     assert len(client.get('/api/customers').json()) == 1
     with app.connect() as c:
-        assert c.execute('SELECT COUNT(*) FROM schema_migrations').fetchone()[0] == 6
+        assert c.execute('SELECT COUNT(*) FROM schema_migrations').fetchone()[0] == 7

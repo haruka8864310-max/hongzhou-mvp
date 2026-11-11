@@ -6,7 +6,7 @@ test('real monthly metal UI: chart, compare, leading, settings, failure isolatio
  assert.ok(['127.0.0.1','localhost'].includes(new URL(base).hostname));
  const windows=[],requests=[],errors=[];let failUpdate=false,failDetail=false;
  async function load(){
-  const dom=new JSDOM(await(await fetch(base)).text(),{url:base,runScripts:'outside-only',pretendToBeVisual:true});
+  const dom=new JSDOM(await(await fetch(base+'/advanced')).text(),{url:base,runScripts:'outside-only',pretendToBeVisual:true});
   const w=dom.window,d=w.document;windows.push(w);w.AbortController=AbortController;
   let segments=0;w.HTMLCanvasElement.prototype.getContext=()=>({clearRect(){},fillText(){},beginPath(){},moveTo(){},lineTo(){segments++;},stroke(){},arc(){},fill(){}});
   w.addEventListener('error',e=>errors.push(e.message));w.console.error=(...v)=>errors.push(v.map(String).join(' '));

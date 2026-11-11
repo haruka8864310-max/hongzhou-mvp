@@ -27,7 +27,7 @@ def test_monthly_detail_periods_statistics_and_comparison():
         assert c.get('/api/detail/view?series=m:wb_copper&months=2').status_code==400
         assert c.get('/api/detail/view?series=not-found').status_code==404
         assert c.get('/api/detail/view?series=i:fh_scrap').json()['points']==[]
-        assert 'detailChart' in c.get('/').text
+        assert 'detailChart' in c.get('/advanced').text
 
 
 def test_weekly_adjustment_and_monthly_never_merged_and_backup(tmp_path):

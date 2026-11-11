@@ -39,5 +39,7 @@ CATALOG=[
 ]
 BY_ID={r['id']:r for r in CATALOG}
 for record in CATALOG:
+    if record['id']=='cn_rebar':
+        record.update(provider='nbs',frequency='observed',grade='HRB400E Φ20mm',delivery_term='流通領域批發／銷售旬均；非廢鋼與期貨',url='https://www.stats.gov.cn/sj/zxfb/',reason='官方旬度螺紋鋼統計；依實際統計期間及發布時間保存，不當每日報價。',license='引自中國國家統計局網站；統計資料下載使用依其服務條款。')
     if record['id'].startswith('pcc_'):
         record['reason']='工程會官方檔為訪價快照；以實際報價月份為準。下載成功不代表有最新週價或完整歷史，未找到可驗證的官方歷史下載清單。'
