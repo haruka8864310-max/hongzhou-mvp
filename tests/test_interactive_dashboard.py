@@ -17,7 +17,7 @@ def test_chart_reads_original_dates_and_sources(monkeypatch):
 
 def test_local_chart_assets_and_pwa_do_not_cache_data():
     with TestClient(app.app) as client:
-        html=client.get('/').text
+        html=client.get('/market-brief').text
         assert 'market-chart.js' in html and 'lightweight-charts.js' in html
         assert '<canvas' not in html and '<form' not in html
         worker=client.get('/sw.js')

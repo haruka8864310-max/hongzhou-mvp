@@ -5,7 +5,7 @@ from test_scrap_analysis import prepare
 
 def test_home_is_only_five_sections_without_legacy_forms():
     with TestClient(app.app) as c:
-        html=c.get('/').text
+        html=c.get('/market-brief').text
         assert html.count('<section ')==5
         assert '<form' not in html and 'compareChart' not in html and 'globalSummary' not in html
         assert '中文鋼鐵新聞' in html and '豐興下週漲跌分析' in html
@@ -38,4 +38,4 @@ def test_partial_update_returns_each_error_without_blank_page(monkeypatch):
         r=c.post('/api/dashboard/update').json()
         assert not r['ok'] and len(r['results'])==5
         assert 'official offline' in r['results'][0]['message']
-        assert c.get('/api/dashboard').status_code==200 and c.get('/').status_code==200
+        assert c.get('/api/dashboard').status_code==200 and c.get('/market-brief').status_code==200

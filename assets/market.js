@@ -23,7 +23,7 @@ try{
   try{response=await fetch(new URL('/api/health',location.origin),{signal:controller.signal,cache:'no-store'});}finally{clearTimeout(timer);}
   if(!response.ok)throw Error(`服務檢查 HTTP ${response.status}`);
   const health=await response.json();
-  if(health.app!=='hongzhou-metal-market'||health.ui_contract!=='decision-cross-1'||health.database!=='ok')throw Error('連接到其他程式或舊版服務');
+  if(health.app!=='hongzhou-metal-market'||health.ui_contract!=='operations-1'||health.database!=='ok')throw Error('連接到其他程式或舊版服務');
   if(!document.getElementById('settingsform'))throw Error('網頁不是由目前 FastAPI 完整提供，請勿使用 Live Server 或靜態 HTML 預覽');
 }catch(e){console.error('[弘洲服務檢查失敗]',e);bootFailure(`無法確認 ${location.origin} 的弘洲服務：${e.name==='AbortError'?'連線逾時':e.name==='TypeError'?'無法建立連線，服務尚未啟動或網頁來源不正確':e.message}。`);return;}
 const $ = id => document.getElementById(id);

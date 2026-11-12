@@ -10,7 +10,7 @@ test('interactive prices on desktop and 375px touch viewport',async()=>{
  try{
   const context=await browser.newContext({viewport:{width:1280,height:900}}),page=await context.newPage();
   page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>requests.push(r.url()));
-  await page.goto(base);await page.waitForFunction(()=>document.documentElement.dataset.dashboardReady==='1');
+  await page.goto(base+'/market-brief');await page.waitForFunction(()=>document.documentElement.dataset.dashboardReady==='1');
   await page.waitForFunction(()=>document.documentElement.dataset.dashboardPredictionReady==='1');
   const sw=await page.evaluate(async()=>{const r=await navigator.serviceWorker.ready;return {scope:r.scope,state:r.active.state,caches:await caches.keys()};});
   assert.equal(sw.state,'activated');assert.equal(sw.scope,base+'/');assert.deepEqual(sw.caches,[]);
@@ -22,6 +22,7 @@ test('interactive prices on desktop and 375px touch viewport',async()=>{
   assert.equal(await page.locator('#fhChart').getAttribute('data-points'),'21');
   assert.ok(await page.locator('#fhChart canvas').count()>0);
   assert.equal(await page.locator('#chartInstrument option').count(),6);
+  await page.locator('#fhChart').scrollIntoViewIfNeeded();
   const chart=await page.locator('#fhChart').boundingBox();
   for(let x=40;x<chart.width-90;x+=30){await page.mouse.move(chart.x+x,chart.y+130);if((await page.locator('#chartTooltip').textContent()).includes('較前筆'))break;}
   const tooltip=await page.locator('#chartTooltip').textContent();
@@ -42,8 +43,8 @@ test('interactive prices on desktop and 375px touch viewport',async()=>{
   assert.match(await page.locator('#updateMessage').textContent(),/TEST source failure/);
   const mobile=await browser.newContext({viewport:{width:375,height:812},isMobile:true,hasTouch:true,deviceScaleFactor:1}),phone=await mobile.newPage();
   phone.on('pageerror',e=>errors.push(e.message));
-  await phone.goto(base);await phone.waitForFunction(()=>document.documentElement.dataset.dashboardReady==='1');
-  const layout=await phone.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,nav:getComputedStyle(document.querySelector('nav')).position,chart:document.getElementById('fhChart').clientWidth}));
+  await phone.goto(base+'/market-brief');await phone.waitForFunction(()=>document.documentElement.dataset.dashboardReady==='1');
+  const layout=await phone.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,nav:getComputedStyle(document.getElementById('sideNav')).position,chart:document.getElementById('fhChart').clientWidth}));
   assert.ok(layout.scroll<=375,JSON.stringify(layout));assert.equal(layout.nav,'fixed');assert.ok(layout.chart>200&&layout.chart<375);
   await phone.locator('#chartInstrument').selectOption('fh_rebar');
   await phone.locator('#period').selectOption('90');

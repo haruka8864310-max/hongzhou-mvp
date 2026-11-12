@@ -32,7 +32,7 @@ SOURCE_REVIEW = {
 class Settings(BaseModel):
     model_config = ConfigDict(extra='forbid', allow_inf_nan=False)
     tracked_markets: list[str] = Field(default_factory=lambda: list(market.INSTRUMENTS), min_length=1)
-    auto_update: bool = True
+    auto_update: bool = False
     update_minutes: int = Field(default=360, ge=60, le=1440)
     analysis_days: int = Field(default=365, ge=30, le=1825)
     anomaly_percent: float = Field(default=5, ge=0.1, le=100)

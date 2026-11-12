@@ -25,6 +25,9 @@ import china_sources
 import news_sources
 import decision_dashboard
 import prediction_lab
+import operations
+import operations_ui
+import update_manager
 from fastapi.staticfiles import StaticFiles
 
 
@@ -45,14 +48,10 @@ MAX_BACKUP_BYTES = 256 * 1024 * 1024
 @asynccontextmanager
 async def lifespan(application):
     setup_database()
-    stop, worker = market_sources.start_scheduler()
     try:
         yield
     finally:
-        stop.set()
-        if worker:
-            import asyncio
-            await asyncio.to_thread(worker.join, 25)
+        pass  # Network updates are explicit user jobs, never startup work.
 
 
 app = FastAPI(title='弘洲營運助手', lifespan=lifespan)
@@ -68,13 +67,16 @@ app.include_router(china_sources.router)
 app.include_router(news_sources.router)
 app.include_router(decision_dashboard.router)
 app.include_router(prediction_lab.router)
+app.include_router(operations.router)
+app.include_router(operations_ui.router)
+app.include_router(update_manager.router)
 app.mount('/assets', StaticFiles(directory=Path(__file__).parent / 'assets'), name='assets')
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=['localhost', '127.0.0.1', '[::1]', 'testserver'])
 
 
 @app.get('/prediction-lab',response_class=HTMLResponse)
 def prediction_laboratory():
-    return (Path(__file__).parent/'templates'/'prediction-lab.html').read_text(encoding='utf-8')
+    return operations_ui.wrap_html((Path(__file__).parent/'templates'/'prediction-lab.html').read_text(encoding='utf-8'))
 
 
 @app.get('/sw.js', include_in_schema=False)
@@ -88,7 +90,7 @@ def health():
     with connect() as c:
         c.execute('SELECT id FROM market_quotes LIMIT 1').fetchone()
         version = c.execute('SELECT MAX(version) FROM schema_migrations').fetchone()[0]
-    return {'app':'hongzhou-metal-market','ui_contract':'decision-cross-1','database':'ok','schema_version':version,'data_directory':str(ROOT.resolve())}
+    return {'app':'hongzhou-metal-market','ui_contract':'operations-1','database':'ok','schema_version':version,'data_directory':str(ROOT.resolve())}
 
 
 @app.get('/market.html', include_in_schema=False)
@@ -132,7 +134,7 @@ def setup_database():
             has_market = c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='market_quotes'").fetchone()
             has_versions = c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'").fetchone()
             version = c.execute('SELECT COALESCE(MAX(version),0) FROM schema_migrations').fetchone()[0] if has_versions else 0
-        if not has_market or version < 7:
+        if not has_market or version < 8:
             backup_database(as_zip=False)
     with connect() as c:
         c.execute(
@@ -183,7 +185,8 @@ def setup_database():
         global_market.migrate(c)
         fenghsin.migrate(c)
         news_sources.migrate(c)
-    global_market.capture_existing()
+        operations.migrate(c)
+        update_manager.migrate(c)
     return DB
 
 
@@ -215,6 +218,7 @@ class Trade(InputModel):
     kg: float = Field(gt=0)
     unit_price: float = Field(ge=0)
     transport: float = Field(default=0, ge=0)
+    purchase_id: int | None = Field(default=None,gt=0)
     note: str = ''
 
 
@@ -275,7 +279,7 @@ def validate_database(path: Path):
             raise ValueError('備份客戶關聯無效')
         if c.execute("SELECT 1 FROM sqlite_master WHERE name='schema_migrations'").fetchone():
             version = c.execute('SELECT COALESCE(MAX(version),0) FROM schema_migrations').fetchone()[0]
-            if version > 7:
+            if version > 8:
                 raise ValueError('備份版本較新，請先升級程式')
             if version >= 2:
                 columns = {r['name'] for r in c.execute('PRAGMA table_info(market_quotes)')}
@@ -311,6 +315,8 @@ def validate_database(path: Path):
                 scrap_analysis.validate(c)
             if version >= 7:
                 news_sources.validate(c)
+            if version >= 8:
+                operations.validate(c)
         for table, model in [('prices', Price), ('customers', Customer), ('trades', Trade)]:
             for row in c.execute(f'SELECT * FROM {table}'):
                 model(**dict(row))
@@ -322,7 +328,7 @@ def validate_database(path: Path):
 
 def restore_database(backup_file: str | Path, target_root: Path | None = None) -> Path:
     # Same lock order as source updates: finish any in-flight download before restore.
-    with market_sources.UPDATE_LOCK, metal_engine.LOCK, japan_sources.LOCK, fenghsin.LOCK, china_sources.LOCK, news_sources.LOCK, prediction_lab.LOCK:
+    with update_manager.LOCK, market_sources.UPDATE_LOCK, metal_engine.LOCK, japan_sources.LOCK, fenghsin.LOCK, china_sources.LOCK, news_sources.LOCK, prediction_lab.LOCK:
         with DB_LOCK:
             return _restore_database(backup_file, target_root)
 
@@ -380,7 +386,12 @@ def _restore_database(backup_file: str | Path, target_root: Path | None = None) 
 
 @app.get('/', response_class=HTMLResponse)
 def dashboard_home():
-    return (Path(__file__).parent/'templates'/'dashboard.html').read_text(encoding='utf-8')
+    return operations_ui.render('overview')
+
+
+@app.get('/market-brief', response_class=HTMLResponse)
+def market_brief():
+    return operations_ui.market_page('all')
 
 
 @app.get('/advanced', response_class=HTMLResponse)
@@ -435,9 +446,11 @@ def customers():
 
 @app.post('/api/customers')
 def add_customer(p: Customer):
-    with connect() as c:
-        c.execute('INSERT INTO customers(name,address,phone,note) VALUES(?,?,?,?)', (p.name, p.address, p.phone, p.note))
-    return {'ok': True}
+    try:
+        value=operations.save_customer(operations.CustomerInput(**p.model_dump()))
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
+    return {'ok':True,**value}
 
 
 @app.get('/api/trades')
@@ -452,13 +465,15 @@ def add_trade(p: Trade):
     if p.kind not in ('buy', 'sell'):
         raise HTTPException(400, '交易類型錯誤')
     with connect() as c:
-        if p.customer_id is not None and not c.execute('SELECT 1 FROM customers WHERE id=?', (p.customer_id,)).fetchone():
+        customer=c.execute('SELECT customer_key FROM customers WHERE id=?',(p.customer_id,)).fetchone()
+        if not customer:
             raise HTTPException(400, '客戶不存在')
-        c.execute(
-            'INSERT INTO trades(date,customer_id,kind,material,kg,unit_price,transport,note) VALUES(?,?,?,?,?,?,?,?)',
-            (p.date, p.customer_id, p.kind, p.material, p.kg, p.unit_price, p.transport, p.note),
-        )
-    return {'ok': True}
+    if p.kind=='sell' and not p.purchase_id:raise HTTPException(400,'出貨必須提供 purchase_id 收購批次；可使用「收購／出貨」頁面選擇，舊交易仍可查詢')
+    try:
+        value=operations.save_trade(operations.TradeInput(customer_key=customer[0],date=p.date,kind=p.kind,material=p.material,gross_kg=p.kg,unit_price=p.unit_price,transport=p.transport,note=p.note,purchase_id=p.purchase_id))
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
+    return {'ok':True,**value}
 
 
 @app.get('/api/summary')

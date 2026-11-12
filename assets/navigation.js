@@ -1,0 +1,2 @@
+'use strict';
+(()=>{const toggle=document.getElementById('navToggle'),nav=document.getElementById('sideNav');toggle?.addEventListener('click',()=>{const open=nav.classList.toggle('open');toggle.setAttribute('aria-expanded',String(open));});for(const a of document.querySelectorAll('[data-nav]')){if(a.pathname===location.pathname||(location.pathname==='/shipments'&&a.pathname==='/purchases')||(location.pathname==='/prediction-lab'&&a.pathname==='/analysis'))a.setAttribute('aria-current','page');}})();

@@ -24,7 +24,7 @@ test('real archived steel model A/B/C, audit dates, source inventory and FH gate
   await page.locator('#labInstrument').selectOption('fh_friday');await page.locator('#trainModel').click();
   await page.waitForFunction(()=>!document.getElementById('trainModel').disabled);
   assert.match(await page.locator('#labStatus').textContent(),/不能預測下週一/);assert.equal(await page.locator('#predictModel').isDisabled(),true);
-  await page.goto(base);await page.waitForFunction(()=>document.documentElement.dataset.dashboardReady==='1'&&document.documentElement.dataset.dashboardPredictionReady==='1');
+  await page.goto(base+'/market-brief');await page.waitForFunction(()=>document.documentElement.dataset.dashboardReady==='1'&&document.documentElement.dataset.dashboardPredictionReady==='1');
   await page.locator('#chartInstrument').selectOption('fh_rebar');await page.locator('#period').selectOption('7');
   assert.equal(await page.locator('#fhChart').getAttribute('data-points'),'1');assert.match(await page.locator('#priceTitle').textContent(),/鋼筋/);
   assert.deepEqual(errors,[]);

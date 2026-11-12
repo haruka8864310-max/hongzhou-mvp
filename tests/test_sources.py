@@ -135,6 +135,10 @@ def test_background_worker_starts_and_stops(client,monkeypatch):
     import threading
     import metal_engine
     called=threading.Event()
+    # The legacy scheduler remains callable explicitly, but the application no
+    # longer starts it and fresh settings default to manual updates.
+    config=client.get('/api/market/settings').json()
+    client.put('/api/market/settings',json={**config,'auto_update':True})
     monkeypatch.setenv('HONGZHOU_DISABLE_SCHEDULER','0')
     monkeypatch.setattr(sources,'synchronize',lambda force:called.set())
     monkeypatch.setattr(metal_engine,'sync',lambda force:None)

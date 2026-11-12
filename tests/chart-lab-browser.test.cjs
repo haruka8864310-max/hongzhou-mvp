@@ -10,7 +10,7 @@ test('shared product state, 18 period combinations, one-point/empty charts and l
  page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>requests.push(r.url()));
  try{
   const payload=await (await context.request.get(base+'/api/dashboard/chart')).json();
-  await page.goto(base);await page.waitForFunction(()=>document.documentElement.dataset.dashboardReady==='1'&&document.documentElement.dataset.dashboardPredictionReady==='1');
+  await page.goto(base+'/market-brief');await page.waitForFunction(()=>document.documentElement.dataset.dashboardReady==='1'&&document.documentElement.dataset.dashboardPredictionReady==='1');
   const combinations=[];
   for(const id of ['fh_scrap','fh_rebar','fh_sections']){
    const s=payload.series.find(x=>x.id===id),latest=s.points.at(-1);

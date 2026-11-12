@@ -12,7 +12,7 @@ test('decision homepage renders real saved observations and retains them on fail
   assert.ok(data.fenghsin.total_count>=21);
   assert.equal(data.markets.length,3);
   assert.ok(data.news.items.length>=6);
-  const dom=new JSDOM(await (await fetch(base)).text(),{url:base,runScripts:'outside-only',pretendToBeVisual:true});
+  const dom=new JSDOM(await (await fetch(base+'/market-brief')).text(),{url:base,runScripts:'outside-only',pretendToBeVisual:true});
   const w=dom.window,d=w.document,requests=[],errors=[];
   let offline=false,newsOffline=false,draws=0;
   w.AbortController=AbortController;
